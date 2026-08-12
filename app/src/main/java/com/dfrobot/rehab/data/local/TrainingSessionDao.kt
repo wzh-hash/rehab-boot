@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import com.dfrobot.rehab.domain.model.TrainingRatio
 import com.dfrobot.rehab.domain.model.TrainingSession
 import kotlinx.coroutines.flow.Flow
 
@@ -14,8 +15,10 @@ data class TrainingSessionEntity(
     val startTimeMillis: Long,
     val endTimeMillis: Long,
     val durationMillis: Long,
-    val avgPressureKg: Double,
-    val peakPressureKg: Double,
+    /** 目标比例指令码(A/B/C/D)。 */
+    val ratioCode: String,
+    val repsCompleted: Int,
+    val completed: Boolean,
 )
 
 fun TrainingSessionEntity.toDomain(): TrainingSession = TrainingSession(
@@ -23,8 +26,9 @@ fun TrainingSessionEntity.toDomain(): TrainingSession = TrainingSession(
     startTimeMillis = startTimeMillis,
     endTimeMillis = endTimeMillis,
     durationMillis = durationMillis,
-    avgPressureKg = avgPressureKg,
-    peakPressureKg = peakPressureKg,
+    ratio = TrainingRatio.entries.firstOrNull { it.code == ratioCode } ?: TrainingRatio.T25,
+    repsCompleted = repsCompleted,
+    completed = completed,
 )
 
 fun TrainingSession.toEntity(): TrainingSessionEntity = TrainingSessionEntity(
@@ -32,8 +36,9 @@ fun TrainingSession.toEntity(): TrainingSessionEntity = TrainingSessionEntity(
     startTimeMillis = startTimeMillis,
     endTimeMillis = endTimeMillis,
     durationMillis = durationMillis,
-    avgPressureKg = avgPressureKg,
-    peakPressureKg = peakPressureKg,
+    ratioCode = ratio.code,
+    repsCompleted = repsCompleted,
+    completed = completed,
 )
 
 @Dao
