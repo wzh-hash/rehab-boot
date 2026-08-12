@@ -65,30 +65,4 @@ class DeviceSettingsRepositoryImplTest {
         assertTrue(error != null)
     }
 
-    @Test
-    fun `体重百分比保存后流读到`() = runTest {
-        repo.saveWeightPercentages(70.0, 25, 50, 75)
-        val (weight, percentages) = repo.weightPercentages.first()
-        assertEquals(70.0, weight, 0.0)
-        assertEquals(Triple(25, 50, 75), percentages)
-    }
-
-    @Test
-    fun `非法百分比保存抛异常`() = runTest {
-        val e1 = try {
-            repo.saveWeightPercentages(60.0, 50, 25, 75)
-            null
-        } catch (e: IllegalArgumentException) {
-            e
-        }
-        assertTrue(e1 != null)
-
-        val e2 = try {
-            repo.saveWeightPercentages(9.0, 25, 50, 75)
-            null
-        } catch (e: IllegalArgumentException) {
-            e
-        }
-        assertTrue(e2 != null)
-    }
 }

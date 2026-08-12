@@ -2,6 +2,7 @@ package com.dfrobot.rehab.data.local
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.dfrobot.rehab.domain.model.TrainingSession
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -31,20 +32,17 @@ class TrainingSessionDaoTest {
         db.close()
     }
 
+    private fun entity(ratioCode: String = "A", start: Long = 1_000L, completed: Boolean = true) =
+        TrainingSessionEntity(
+            startTimeMillis = start, endTimeMillis = 2_000L,
+            durationMillis = 1_000L, ratioCode = ratioCode,
+            repsCompleted = 3, completed = completed,
+        )
+
     @Test
     fun `insert 后 observeAll 按开始时间倒序`() = runTest {
-        dao.insert(
-            TrainingSessionEntity(
-                startTimeMillis = 1_000L, endTimeMillis = 2_000L,
-                durationMillis = 1_000L, avgPressureKg = 10.0, peakPressureKg = 15.0,
-            ),
-        )
-        dao.insert(
-            TrainingSessionEntity(
-                startTimeMillis = 5_000L, endTimeMillis = 6_000L,
-                durationMillis = 1_000L, avgPressureKg = 20.0, peakPressureKg = 25.0,
-            ),
-        )
+        dao.insert(entity(start = 1_000L))
+        dao.insert(entity(start = 5_000L))
         val sessions = dao.observeAll().first()
         assertEquals(2, sessions.size)
         assertEquals(5_000L, sessions[0].startTimeMillis)
@@ -53,12 +51,7 @@ class TrainingSessionDaoTest {
 
     @Test
     fun `delete 后列表移除`() = runTest {
-        val id = dao.insert(
-            TrainingSessionEntity(
-                startTimeMillis = 1_000L, endTimeMillis = 2_000L,
-                durationMillis = 1_000L, avgPressureKg = 10.0, peakPressureKg = 15.0,
-            ),
-        )
+        val id = dao.insert(entity())
         assertEquals(1, dao.observeAll().first().size)
         dao.delete(id)
         assertEquals(0, dao.observeAll().first().size)
@@ -66,14 +59,11 @@ class TrainingSessionDaoTest {
 
     @Test
     fun `映射到领域模型字段一致`() {
-        val entity = TrainingSessionEntity(
-            id = 7L, startTimeMillis = 1_000L, endTimeMillis = 2_000L,
-            durationMillis = 1_000L, avgPressureKg = 10.0, peakPressureKg = 15.0,
-        )
+        val entity = entity(ratioCode = "C", start = 1_000L)
         val domain = entity.toDomain()
-        assertEquals(7L, domain.id)
-        assertEquals(1_000L, domain.startTimeMillis)
-        assertEquals(15.0, domain.peakPressureKg, 0.0)
+        assertEquals(com.dfrobot.rehab.domain.model.TrainingRatio.T75, domain.ratio)
+        assertEquals(3, domain.repsCompleted)
+        assertEquals(true, domain.completed)
         assertEquals(domain, domain.toEntity().toDomain())
     }
 }

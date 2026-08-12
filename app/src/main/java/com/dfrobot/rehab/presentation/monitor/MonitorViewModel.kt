@@ -5,13 +5,15 @@ import androidx.lifecycle.viewModelScope
 import com.dfrobot.rehab.data.mqtt.TelemetryDataSource
 import com.dfrobot.rehab.domain.ConnectionGateway
 import com.dfrobot.rehab.domain.SessionTracker
-import com.dfrobot.rehab.domain.ThresholdCalculator
 import com.dfrobot.rehab.domain.model.ConnectionState
+import com.dfrobot.rehab.domain.model.DeviceEvent
+import com.dfrobot.rehab.domain.model.TrainingRatio
 import com.dfrobot.rehab.domain.repository.DeviceSettingsRepository
 import com.dfrobot.rehab.domain.repository.TrainingSessionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +24,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** 训练超时:10 分钟无 "plus" 事件视为未完成。 */
+private const val SESSION_TIMEOUT_MS = 10 * 60 * 1000L
+private const val MAX_EVENTS = 8
 
 @HiltViewModel
 class MonitorViewModel @Inject constructor(
@@ -39,32 +45,34 @@ class MonitorViewModel @Inject constructor(
     private val _effects = Channel<MonitorEffect>(Channel.BUFFERED)
     val effects: Flow<MonitorEffect> = _effects.receiveAsFlow()
 
+    private var timeoutJob: Job? = null
+
     init {
         observeConnectionState()
         observeInvalidFrames()
         observeErrors()
-        observeSamples()
-        observeWeightPercentages()
+        observeEvents()
         tickElapsed()
     }
 
     fun accept(intent: MonitorIntent) {
         when (intent) {
-            MonitorIntent.StartSession -> tracker.start()
-            MonitorIntent.PauseSession -> tracker.pause()
-            MonitorIntent.ResumeSession -> tracker.resume()
-            MonitorIntent.FinishSession -> finishSession()
+            is MonitorIntent.StartTraining -> startTraining(intent.ratio)
+            MonitorIntent.HelloTest -> helloTest()
             MonitorIntent.RetryConnect -> retryConnect()
-        }
-        if (intent != MonitorIntent.RetryConnect) {
-            syncTrackerState()
         }
     }
 
     private fun observeConnectionState() {
         viewModelScope.launch {
             connectionGateway.connectionState.collect { conn ->
-                _state.update { it.copy(connectionState = conn) }
+                _state.update {
+                    it.copy(
+                        connectionState = conn,
+                        // 断开后设备在线状态复位(重连后设备会重新发 hello)
+                        deviceOnline = if (conn == ConnectionState.Connected) it.deviceOnline else false,
+                    )
+                }
             }
         }
     }
@@ -85,53 +93,104 @@ class MonitorViewModel @Inject constructor(
         }
     }
 
-    private var lastUiUpdateMillis = 0L
+    private fun observeEvents() {
+        viewModelScope.launch {
+            telemetryDataSource.observeEvents().collect { event ->
+                when (event) {
+                    DeviceEvent.Hello -> _state.update { it.copy(deviceOnline = true) }
 
-    private fun observeSamples() {
-        // 会话统计:全量样本
-        viewModelScope.launch {
-            telemetryDataSource.observeSamples().collect { sample ->
-                tracker.ingest(sample)
-                _state.update { it.copy(stats = tracker.stats) }
-            }
-        }
-        // UI 实时压力:按样本时间戳 150ms 节流
-        // (不用 sample() 操作符:其内部 ticker 会在测试调度器上无限重排,导致 runTest 死循环)
-        viewModelScope.launch {
-            telemetryDataSource.observeSamples().collect { sample ->
-                if (sample.timestampMillis - lastUiUpdateMillis >= 150) {
-                    lastUiUpdateMillis = sample.timestampMillis
-                    _state.update {
-                        it.copy(
-                            livePressureKg = sample.valueKg,
-                            livePressureAtMillis = sample.timestampMillis,
-                        )
-                    }
+                    DeviceEvent.RepReached -> appendEvent("已达到目标重量")
+
+                    DeviceEvent.RepCompleted -> onRepCompleted()
                 }
             }
         }
     }
 
-    private fun observeWeightPercentages() {
+    private fun onRepCompleted() {
+        if (tracker.phase != com.dfrobot.rehab.domain.SessionPhase.Training) return
+        tracker.onRepCompleted()
+        appendEvent("完成一次重复")
+        if (tracker.repsCompleted >= 3) {
+            finishSession("训练完成,已记录")
+        }
+    }
+
+    private fun startTraining(ratio: TrainingRatio) {
+        if (!_state.value.canSendCommand) {
+            emitEffect(
+                MonitorEffect.ShowMessage(
+                    when {
+                        _state.value.connectionState != ConnectionState.Connected -> "未连接,请先连接平台"
+                        else -> "设备训练中,请等待当前训练结束"
+                    },
+                ),
+            )
+            return
+        }
         viewModelScope.launch {
-            settingsRepository.weightPercentages.collect { (weight, p) ->
-                val thresholds = runCatching {
-                    ThresholdCalculator.fromPercentages(weight, p.first, p.second, p.third)
-                }.getOrNull()
-                _state.update {
-                    it.copy(
-                        bodyWeightKg = weight,
-                        thresholdPercentages = p,
-                        thresholds = thresholds,
-                    )
+            runCatching { telemetryDataSource.publishCommand(ratio) }
+                .onFailure { emitEffect(MonitorEffect.ShowMessage(it.message ?: "指令发送失败")) }
+                .onSuccess {
+                    tracker.start(ratio)
+                    _state.update {
+                        it.copy(
+                            phase = tracker.phase,
+                            repsCompleted = 0,
+                            activeRatio = ratio,
+                            stats = tracker.stats,
+                            recentEvents = emptyList(),
+                        )
+                    }
+                    startTimeout()
                 }
-                if (thresholds != null &&
-                    connectionGateway.connectionState.value == ConnectionState.Connected
-                ) {
-                    // 保留位:连接后自动下发最新阈值(失败静默,不影响会话)
-                    runCatching { telemetryDataSource.publishThresholds(thresholds) }
-                }
+        }
+    }
+
+    private fun helloTest() {
+        if (_state.value.connectionState != ConnectionState.Connected) {
+            emitEffect(MonitorEffect.ShowMessage("未连接,请先连接平台"))
+            return
+        }
+        viewModelScope.launch {
+            runCatching { telemetryDataSource.publishHelloTest() }
+                .onFailure { emitEffect(MonitorEffect.ShowMessage(it.message ?: "指令发送失败")) }
+        }
+    }
+
+    private fun startTimeout() {
+        timeoutJob?.cancel()
+        timeoutJob = viewModelScope.launch {
+            delay(SESSION_TIMEOUT_MS)
+            if (tracker.phase == com.dfrobot.rehab.domain.SessionPhase.Training) {
+                finishSession("训练超时,已记录(未完成)")
             }
+        }
+    }
+
+    private fun finishSession(message: String) {
+        timeoutJob?.cancel()
+        timeoutJob = null
+        val session = tracker.finish()
+        viewModelScope.launch {
+            runCatching { trainingSessionRepository.saveSession(session) }
+            emitEffect(MonitorEffect.ShowMessage(message))
+        }
+        _state.update {
+            it.copy(
+                phase = tracker.phase,
+                stats = tracker.stats,
+                repsCompleted = tracker.repsCompleted,
+            )
+        }
+    }
+
+    private fun appendEvent(text: String) {
+        _state.update {
+            val now = System.currentTimeMillis()
+            it.copy(
+                recentEvents = (it.recentEvents + EventUi(now, text)).takeLast(MAX_EVENTS),
+            )
         }
     }
 
@@ -144,20 +203,6 @@ class MonitorViewModel @Inject constructor(
                 _state.update { it.copy(stats = tracker.stats) }
             }
         }
-    }
-
-    private fun syncTrackerState() {
-        _state.update { it.copy(phase = tracker.phase, stats = tracker.stats) }
-    }
-
-    private fun finishSession() {
-        if (tracker.phase == com.dfrobot.rehab.domain.SessionPhase.Idle) return
-        val session = tracker.finish()
-        viewModelScope.launch {
-            runCatching { trainingSessionRepository.saveSession(session) }
-            emitEffect(MonitorEffect.ShowMessage("训练完成,已保存"))
-        }
-        syncTrackerState()
     }
 
     private fun retryConnect() {

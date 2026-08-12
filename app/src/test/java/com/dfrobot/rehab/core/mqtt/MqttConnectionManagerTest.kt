@@ -1,14 +1,13 @@
 package com.dfrobot.rehab.core.mqtt
 
-import com.dfrobot.rehab.data.protocol.ProtocolCodec
 import com.dfrobot.rehab.domain.model.ConnectionState
 import com.dfrobot.rehab.domain.model.DeviceSettings
-import com.dfrobot.rehab.domain.model.Thresholds
 import com.dfrobot.rehab.testutil.TestBroker
 import com.hivemq.client.mqtt.MqttClient
 import com.hivemq.client.mqtt.MqttGlobalPublishFilter
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3BlockingClient
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -55,7 +54,7 @@ class MqttConnectionManagerTest {
     }
 
     @Test(timeout = 15_000)
-    fun `publishConfig 后设备端收到 retained 配置帧`() = runBlocking {
+    fun `publishCommand 后设备端收到指令且 retained 为 false`() = runBlocking {
         manager.connect(settings)
         val device = deviceClient()
         device.subscribeWith()
@@ -64,31 +63,30 @@ class MqttConnectionManagerTest {
             .send()
         val publishes = device.publishes(MqttGlobalPublishFilter.ALL)
 
-        manager.publishConfig(settings.topic, Thresholds(15.0, 30.0, 45.0))
+        manager.publishCommand(settings.topic, "A")
 
         val publish = publishes.receive(5, TimeUnit.SECONDS).orElseThrow()
-        val actual = publish.payloadAsBytes.toString(Charsets.UTF_8)
-        val expected = ProtocolCodec.encodeConfig(Thresholds(15.0, 30.0, 45.0))
-            .toString(Charsets.UTF_8)
-        assertEquals(expected, actual)
+        assertEquals("A", publish.payloadAsBytes.toString(Charsets.UTF_8))
+        assertEquals(false, publish.isRetain)
         publishes.close()
         device.disconnect()
         manager.disconnect()
     }
 
     @Test(timeout = 15_000)
-    fun `设备发布 data 帧后 inboundMessages 收到`() = runBlocking {
+    fun `设备发布 hello 帧后 inboundMessages 收到`() = runBlocking {
         manager.connect(settings)
         val device = deviceClient()
+        // 先订阅再发布,避免消息在订阅前被 SharedFlow 丢弃
+        val received = async { manager.inboundMessages.first() }
         device.publishWith()
             .topic(settings.topic)
             .qos(MqttQos.AT_MOST_ONCE)
-            .payload("""{"type":"data","p":9.5,"ts":0}""".toByteArray())
+            .payload("hello".toByteArray())
             .send()
 
-        val message = withTimeout(5_000) { manager.inboundMessages.first() }
-        val data = message as ProtocolCodec.MqttMessage.Data
-        assertEquals(9.5, data.sample.valueKg, 0.0)
+        val message = withTimeout(5_000) { received.await() }
+        assertEquals(com.dfrobot.rehab.domain.model.DeviceEvent.Hello, message)
         device.disconnect()
         manager.disconnect()
     }
@@ -105,7 +103,7 @@ class MqttConnectionManagerTest {
         device.publishWith()
             .topic(settings.topic)
             .qos(MqttQos.AT_MOST_ONCE)
-            .payload("""{"type":"nope"}""".toByteArray())
+            .payload("wa".toByteArray())
             .send()
 
         withTimeout(5_000) {

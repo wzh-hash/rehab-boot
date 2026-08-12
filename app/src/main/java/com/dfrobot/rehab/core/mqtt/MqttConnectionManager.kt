@@ -1,10 +1,9 @@
 package com.dfrobot.rehab.core.mqtt
 
-import com.dfrobot.rehab.data.protocol.ProtocolCodec
+import com.dfrobot.rehab.data.protocol.FirmwareCodec
 import com.dfrobot.rehab.domain.ConnectionGateway
 import com.dfrobot.rehab.domain.model.ConnectionState
 import com.dfrobot.rehab.domain.model.DeviceSettings
-import com.dfrobot.rehab.domain.model.Thresholds
 import com.hivemq.client.mqtt.MqttClient
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
@@ -51,10 +50,11 @@ class MqttConnectionManager @Inject constructor() : ConnectionGateway {
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    private val _inboundMessages = MutableSharedFlow<ProtocolCodec.MqttMessage>(
+    private val _inboundMessages = MutableSharedFlow<com.dfrobot.rehab.domain.model.DeviceEvent>(
         extraBufferCapacity = 64,
     )
-    val inboundMessages: SharedFlow<ProtocolCodec.MqttMessage> = _inboundMessages.asSharedFlow()
+    val inboundMessages: SharedFlow<com.dfrobot.rehab.domain.model.DeviceEvent> =
+        _inboundMessages.asSharedFlow()
 
     private val _errorEvents = MutableSharedFlow<String>(extraBufferCapacity = 8)
     override val errorEvents: SharedFlow<String> = _errorEvents.asSharedFlow()
@@ -127,7 +127,7 @@ class MqttConnectionManager @Inject constructor() : ConnectionGateway {
             .topicFilter(topic)
             .qos(MqttQos.AT_MOST_ONCE)
             .callback { publish ->
-                val message = ProtocolCodec.decodeIncoming(publish.payloadAsBytes)
+                val message = FirmwareCodec.decodeIncoming(publish.payloadAsBytes)
                 if (message != null) {
                     _inboundMessages.tryEmit(message)
                 } else {
@@ -155,14 +155,17 @@ class MqttConnectionManager @Inject constructor() : ConnectionGateway {
         }
     }
 
-    /** 发布阈值配置:QoS 1 + retained,设备重连/订阅即收到最新阈值。 */
-    suspend fun publishConfig(topic: String, thresholds: Thresholds) {
-        val c = client ?: throw MqttConnectionException("尚未连接,无法发送配置")
+    /**
+     * 发布指令:QoS 1,默认 retained=false
+     * (固件订阅时会立即收到 retained 消息,开启 retained 会令设备开机误触发训练)。
+     */
+    suspend fun publishCommand(topic: String, payload: String, retain: Boolean = false) {
+        val c = client ?: throw MqttConnectionException("尚未连接,无法发送指令")
         await(c.publishWith()
             .topic(topic)
             .qos(MqttQos.AT_LEAST_ONCE)
-            .retain(true)
-            .payload(ProtocolCodec.encodeConfig(thresholds))
+            .retain(retain)
+            .payload(payload.toByteArray(Charsets.UTF_8))
             .send())
     }
 
