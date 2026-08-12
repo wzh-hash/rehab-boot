@@ -141,6 +141,8 @@ class MonitorViewModel @Inject constructor(
     private fun onRepCompleted() {
         if (tracker.phase != com.dfrobot.rehab.domain.SessionPhase.Training) return
         tracker.onRepCompleted()
+        // 同步进度到 UI(state.repsCompleted 驱动"第 X/3 次"与圆点序列)
+        _state.update { it.copy(repsCompleted = tracker.repsCompleted) }
         appendEvent(R.string.monitor_event_completed)
         if (tracker.repsCompleted >= 3) {
             finishSession(R.string.session_done)
@@ -215,7 +217,8 @@ class MonitorViewModel @Inject constructor(
             it.copy(
                 phase = tracker.phase,
                 stats = tracker.stats,
-                repsCompleted = tracker.repsCompleted,
+                // 用会话值而非 tracker(其已 reset 清零)
+                repsCompleted = session.repsCompleted,
             )
         }
     }

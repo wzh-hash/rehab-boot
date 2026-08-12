@@ -192,6 +192,27 @@ class MonitorViewModelTest {
     }
 
     @Test
+    fun `每次重复完成进度实时更新`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val viewModel = createViewModel()
+        gateway.stateFlow.value = ConnectionState.Connected
+        viewModel.accept(MonitorIntent.StartTraining(TrainingRatio.T25))
+        assertEquals(0, viewModel.state.value.repsCompleted)
+
+        telemetry.events.emit(DeviceEvent.RepCompleted)
+        assertEquals(1, viewModel.state.value.repsCompleted)
+        assertEquals(SessionPhase.Training, viewModel.state.value.phase)
+
+        telemetry.events.emit(DeviceEvent.RepCompleted)
+        assertEquals(2, viewModel.state.value.repsCompleted)
+        assertEquals(SessionPhase.Training, viewModel.state.value.phase)
+
+        telemetry.events.emit(DeviceEvent.RepCompleted)
+        assertEquals(3, viewModel.state.value.repsCompleted)
+        assertEquals(SessionPhase.Idle, viewModel.state.value.phase)
+    }
+
+    @Test
     fun `训练中重复发令被拒`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val viewModel = createViewModel()
