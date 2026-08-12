@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+
+# Local configuration
+local.properties
+
+# IDE
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Misc
+*.log
+.DS_Store
