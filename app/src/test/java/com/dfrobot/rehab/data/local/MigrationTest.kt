@@ -11,8 +11,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Room 迁移测试:验证 v1/v2 数据库升级到 v3 不崩溃(历史页闪退修复)。
- * 用框架 SQLite 手工造旧库(旧版本 schema 未导出 JSON,无法用 MigrationTestHelper)。
+ * Room 迁移测试:验证 v1/v2 数据库升级到 v3 不崩溃(历史页闪退修复),
+ * 并严格比对迁移后的表结构与 Room 3.json 导出的期望 schema 一致。
  */
 @RunWith(RobolectricTestRunner::class)
 class MigrationTest {
@@ -42,6 +42,21 @@ class MigrationTest {
         )
     """.trimIndent()
 
+    /**
+     * 期望的 v3 表结构(与 app/schemas/.../3.json 逐字一致):
+     * 列名 → (类型, notNull, 默认值)。steps 无默认值。
+     */
+    private val expectedV3Columns = mapOf(
+        "id" to Triple("INTEGER", 1, null),
+        "startTimeMillis" to Triple("INTEGER", 1, null),
+        "endTimeMillis" to Triple("INTEGER", 1, null),
+        "durationMillis" to Triple("INTEGER", 1, null),
+        "ratioCode" to Triple("TEXT", 1, null),
+        "repsCompleted" to Triple("INTEGER", 1, null),
+        "completed" to Triple("INTEGER", 1, null),
+        "steps" to Triple("INTEGER", 1, null),
+    )
+
     private fun createOldDb(name: String, version: Int, ddl: String) {
         context.deleteDatabase(name)
         val db = context.openOrCreateDatabase(name, android.content.Context.MODE_PRIVATE, null)
@@ -50,20 +65,24 @@ class MigrationTest {
         db.close()
     }
 
-    private fun columnsOf(dbName: String): Set<String> {
+    private fun assertSchemaMatchesV3(dbName: String) {
         val db = context.openOrCreateDatabase(dbName, android.content.Context.MODE_PRIVATE, null)
         val cursor = db.rawQuery("PRAGMA table_info(training_sessions)", null)
-        val columns = mutableSetOf<String>()
+        val actual = mutableMapOf<String, Triple<String, Int, String?>>()
         while (cursor.moveToNext()) {
-            columns.add(cursor.getString(1))
+            actual[cursor.getString(1)] = Triple(
+                cursor.getString(2), // type
+                cursor.getInt(3),    // notnull
+                cursor.getString(4), // dflt_value
+            )
         }
         cursor.close()
         db.close()
-        return columns
+        assertEquals("迁移后表结构与 3.json 期望不一致", expectedV3Columns, actual)
     }
 
     @Test
-    fun `v1 升级到 v3 不崩溃且新表结构正确`() = runTest {
+    fun `v1 升级到 v3 不崩溃且表结构与期望一致`() = runTest {
         createOldDb("migrate-1", 1, v1Ddl)
 
         val room = Room.databaseBuilder(context, RehabDatabase::class.java, "migrate-1")
@@ -73,16 +92,12 @@ class MigrationTest {
         assertEquals(0, room.trainingSessionDao().observeAll().first().size)
         room.close()
 
-        val columns = columnsOf("migrate-1")
-        assertTrue("steps" in columns)
-        assertTrue("ratioCode" in columns)
-        assertTrue("avgPressureKg" !in columns)
-        assertTrue("peakPressureKg" !in columns)
+        assertSchemaMatchesV3("migrate-1")
         context.deleteDatabase("migrate-1")
     }
 
     @Test
-    fun `v2 升级到 v3 保留行且 steps 默认 0`() = runTest {
+    fun `v2 升级到 v3 保留行且表结构与期望一致`() = runTest {
         createOldDb("migrate-2", 2, v2Ddl)
         val seed = context.openOrCreateDatabase("migrate-2", android.content.Context.MODE_PRIVATE, null)
         seed.execSQL(
@@ -101,8 +116,40 @@ class MigrationTest {
         assertEquals(1, sessions.size)
         assertEquals("A", sessions[0].ratioCode)
         assertEquals(3, sessions[0].repsCompleted)
-        assertEquals(0, sessions[0].steps) // 迁移补默认值
+        assertEquals(0, sessions[0].steps) // 迁移后默认 0
         room.close()
+
+        assertSchemaMatchesV3("migrate-2")
         context.deleteDatabase("migrate-2")
+    }
+
+    @Test
+    fun `v2 升级到 v3 保留 id 主键与自增`() = runTest {
+        createOldDb("migrate-3", 2, v2Ddl)
+        val seed = context.openOrCreateDatabase("migrate-3", android.content.Context.MODE_PRIVATE, null)
+        seed.execSQL(
+            """
+            INSERT INTO `training_sessions`
+                (startTimeMillis, endTimeMillis, durationMillis, ratioCode, repsCompleted, completed)
+                VALUES (1000, 2000, 1000, 'B', 2, 0)
+            """.trimIndent(),
+        )
+        seed.close()
+
+        val room = Room.databaseBuilder(context, RehabDatabase::class.java, "migrate-3")
+            .addMigrations(*RehabDatabase.MIGRATIONS)
+            .build()
+        val dao = room.trainingSessionDao()
+        // 迁移后插入新行,验证 AUTOINCREMENT 序号不冲突(旧 id=1 保留)
+        val newId = dao.insert(
+            TrainingSessionEntity(
+                startTimeMillis = 3000, endTimeMillis = 4000, durationMillis = 1000,
+                ratioCode = "A", repsCompleted = 3, completed = true,
+            ),
+        )
+        assertTrue(newId > 1)
+        assertEquals(2, dao.observeAll().first().size)
+        room.close()
+        context.deleteDatabase("migrate-3")
     }
 }

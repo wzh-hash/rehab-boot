@@ -84,7 +84,7 @@
     <string name="settings_test_success">连接成功</string>
     <string name="settings_save">保存</string>
     <string name="settings_saved">已保存</string>
-    <string name="settings_ratio_hint">训练比例在监测页选择(25/50/75/100%%),设备端语音播报;设备体重由掌控板按键调节。</string>
+    <string name="settings_ratio_hint">训练比例在监测页选择(25/50/75/100%),设备端语音播报;设备体重由掌控板按键调节。</string>
     <string name="settings_about_section">关于</string>
     <string name="settings_plaintext_warning">平台连接为明文传输,请勿在公共网络使用</string>
     <string name="settings_version">版本 %1$s</string>
