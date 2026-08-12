@@ -8,6 +8,8 @@ import com.dfrobot.rehab.data.local.DeviceSettingsStore
 import com.dfrobot.rehab.data.local.RehabDatabase
 import com.dfrobot.rehab.data.local.TrainingSessionDao
 import com.dfrobot.rehab.core.mqtt.MqttConnectionManager
+import com.dfrobot.rehab.core.sensor.StepCounter
+import com.dfrobot.rehab.core.sensor.StepSensor
 import com.dfrobot.rehab.data.mqtt.MqttTelemetryDataSource
 import com.dfrobot.rehab.data.mqtt.TelemetryDataSource
 import com.dfrobot.rehab.domain.ConnectionGateway
@@ -48,6 +50,12 @@ abstract class DataModule {
     abstract fun bindConnectionGateway(
         impl: MqttConnectionManager,
     ): ConnectionGateway
+
+    @Binds
+    @Singleton
+    abstract fun bindStepCounter(
+        impl: StepSensor,
+    ): StepCounter
 
     companion object {
         @Provides

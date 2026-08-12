@@ -21,6 +21,10 @@ data class MonitorUiState(
     val stats: SessionStats = SessionStats(0),
     val recentEvents: List<EventUi> = emptyList(),
     val invalidFrameCount: Int = 0,
+    /** 手机是否支持计步(无传感器时 UI 显示不可用)。 */
+    val stepsSupported: Boolean = false,
+    /** 训练期间实时步数。 */
+    val steps: Int = 0,
 ) {
     val isConnecting: Boolean get() = connectionState == ConnectionState.Connecting
 

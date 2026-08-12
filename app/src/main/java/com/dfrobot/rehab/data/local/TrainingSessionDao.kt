@@ -19,6 +19,7 @@ data class TrainingSessionEntity(
     val ratioCode: String,
     val repsCompleted: Int,
     val completed: Boolean,
+    val steps: Int = 0,
 )
 
 fun TrainingSessionEntity.toDomain(): TrainingSession = TrainingSession(
@@ -29,6 +30,7 @@ fun TrainingSessionEntity.toDomain(): TrainingSession = TrainingSession(
     ratio = TrainingRatio.entries.firstOrNull { it.code == ratioCode } ?: TrainingRatio.T25,
     repsCompleted = repsCompleted,
     completed = completed,
+    steps = steps,
 )
 
 fun TrainingSession.toEntity(): TrainingSessionEntity = TrainingSessionEntity(
@@ -39,6 +41,7 @@ fun TrainingSession.toEntity(): TrainingSessionEntity = TrainingSessionEntity(
     ratioCode = ratio.code,
     repsCompleted = repsCompleted,
     completed = completed,
+    steps = steps,
 )
 
 @Dao

@@ -2,8 +2,10 @@ package com.dfrobot.rehab.presentation.monitor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dfrobot.rehab.core.sensor.StepCounter
 import com.dfrobot.rehab.data.mqtt.TelemetryDataSource
 import com.dfrobot.rehab.domain.ConnectionGateway
+import com.dfrobot.rehab.domain.SessionPhase
 import com.dfrobot.rehab.domain.SessionTracker
 import com.dfrobot.rehab.domain.model.ConnectionState
 import com.dfrobot.rehab.domain.model.DeviceEvent
@@ -35,11 +37,12 @@ class MonitorViewModel @Inject constructor(
     private val connectionGateway: ConnectionGateway,
     private val settingsRepository: DeviceSettingsRepository,
     private val trainingSessionRepository: TrainingSessionRepository,
+    private val stepCounter: StepCounter,
 ) : ViewModel() {
 
-    private val tracker = SessionTracker()
+    private val tracker = SessionTracker(stepProvider = { stepCounter.readTotalSteps() ?: 0 })
 
-    private val _state = MutableStateFlow(MonitorUiState())
+    private val _state = MutableStateFlow(MonitorUiState(stepsSupported = stepCounter.isSupported))
     val state: StateFlow<MonitorUiState> = _state.asStateFlow()
 
     private val _effects = Channel<MonitorEffect>(Channel.BUFFERED)
@@ -132,6 +135,7 @@ class MonitorViewModel @Inject constructor(
             runCatching { telemetryDataSource.publishCommand(ratio) }
                 .onFailure { emitEffect(MonitorEffect.ShowMessage(it.message ?: "指令发送失败")) }
                 .onSuccess {
+                    stepCounter.start()
                     tracker.start(ratio)
                     _state.update {
                         it.copy(
@@ -140,6 +144,7 @@ class MonitorViewModel @Inject constructor(
                             activeRatio = ratio,
                             stats = tracker.stats,
                             recentEvents = emptyList(),
+                            steps = stepCounter.readTotalSteps() ?: 0,
                         )
                     }
                     startTimeout()
@@ -171,6 +176,7 @@ class MonitorViewModel @Inject constructor(
     private fun finishSession(message: String) {
         timeoutJob?.cancel()
         timeoutJob = null
+        stepCounter.stop()
         val session = tracker.finish()
         viewModelScope.launch {
             runCatching { trainingSessionRepository.saveSession(session) }
@@ -200,7 +206,16 @@ class MonitorViewModel @Inject constructor(
             while (true) {
                 delay(1_000)
                 tracker.tick()
-                _state.update { it.copy(stats = tracker.stats) }
+                _state.update {
+                    it.copy(
+                        stats = tracker.stats,
+                        steps = if (it.phase == SessionPhase.Training) {
+                            stepCounter.readTotalSteps() ?: it.steps
+                        } else {
+                            it.steps
+                        },
+                    )
+                }
             }
         }
     }

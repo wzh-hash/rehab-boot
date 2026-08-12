@@ -14,7 +14,7 @@ class SessionTrackerTest {
     @Test
     fun `三次重复完成则会话 completed`() {
         val clock = Clock(1_000L)
-        val tracker = SessionTracker { clock.t }
+        val tracker = SessionTracker(nowMillis = { clock.t })
         tracker.start(TrainingRatio.T25)
         clock.advance(2_000)
         tracker.onRepCompleted()
@@ -34,7 +34,7 @@ class SessionTrackerTest {
 
     @Test
     fun `中途结束则 completed 为 false`() {
-        val tracker = SessionTracker { 0L }
+        val tracker = SessionTracker(nowMillis = { 0L })
         tracker.start(TrainingRatio.T75)
         tracker.onRepCompleted()
         val session = tracker.finish()
@@ -67,9 +67,31 @@ class SessionTrackerTest {
     }
 
     @Test
+    fun `会话步数为结束与开始之差`() {
+        var steps = 0
+        val tracker = SessionTracker(stepProvider = { steps })
+        tracker.start(TrainingRatio.T50)
+        steps = 12
+        tracker.onRepCompleted()
+        steps = 35
+        val session = tracker.finish()
+        assertEquals(35, session.steps)
+    }
+
+    @Test
+    fun `步数回退不为负`() {
+        var steps = 100
+        val tracker = SessionTracker(stepProvider = { steps })
+        tracker.start(TrainingRatio.T50)
+        steps = 80
+        val session = tracker.finish()
+        assertEquals(0, session.steps)
+    }
+
+    @Test
     fun `tick 推进时长`() {
         val clock = Clock(0L)
-        val tracker = SessionTracker { clock.t }
+        val tracker = SessionTracker(nowMillis = { clock.t })
         tracker.start(TrainingRatio.T100)
         clock.advance(1_000)
         tracker.tick()

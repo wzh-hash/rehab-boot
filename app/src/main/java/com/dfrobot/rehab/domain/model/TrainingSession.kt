@@ -10,4 +10,6 @@ data class TrainingSession(
     val repsCompleted: Int,
     /** 3 次重复全部完成则为 true;超时/中断为 false。 */
     val completed: Boolean,
+    /** 训练期间手机传感器计步数。 */
+    val steps: Int = 0,
 )

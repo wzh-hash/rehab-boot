@@ -72,6 +72,18 @@ class MonitorViewModelTest {
         }
     }
 
+    private class FakeStepCounter : com.dfrobot.rehab.core.sensor.StepCounter {
+        var supported = true
+        var steps = 0
+        var started = false
+        var stopped = false
+
+        override val isSupported: Boolean get() = supported
+        override fun readTotalSteps(): Int? = if (supported) steps else null
+        override fun start() { started = true }
+        override fun stop() { stopped = true }
+    }
+
     private class FakeSettingsRepo : DeviceSettingsRepository {
         val settingsFlow = MutableStateFlow(
             DeviceSettings(iotId = "abc", iotPwd = "pwd", topic = "BJpHJt1VW"),
@@ -102,6 +114,7 @@ class MonitorViewModelTest {
     private lateinit var gateway: FakeGateway
     private lateinit var settingsRepo: FakeSettingsRepo
     private lateinit var sessionRepo: FakeSessionRepo
+    private lateinit var stepCounter: FakeStepCounter
 
     @Before
     fun setUp() {
@@ -109,10 +122,11 @@ class MonitorViewModelTest {
         gateway = FakeGateway()
         settingsRepo = FakeSettingsRepo()
         sessionRepo = FakeSessionRepo()
+        stepCounter = FakeStepCounter()
     }
 
     private fun createViewModel() =
-        MonitorViewModel(telemetry, gateway, settingsRepo, sessionRepo)
+        MonitorViewModel(telemetry, gateway, settingsRepo, sessionRepo, stepCounter)
 
     @Test
     fun `未连接时发令被拒且不下发`() = runTest {
@@ -185,6 +199,25 @@ class MonitorViewModelTest {
         viewModel.accept(MonitorIntent.StartTraining(TrainingRatio.T50))
         assertEquals(listOf(TrainingRatio.T25), telemetry.publishedCommands)
         assertEquals(TrainingRatio.T25, viewModel.state.value.activeRatio)
+    }
+
+    @Test
+    fun `训练开始启动计步_结束停止并写入步数`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val viewModel = createViewModel()
+        gateway.stateFlow.value = ConnectionState.Connected
+        viewModel.accept(MonitorIntent.StartTraining(TrainingRatio.T25))
+        assertEquals(true, stepCounter.started)
+        assertEquals(true, viewModel.state.value.stepsSupported)
+
+        stepCounter.steps = 42
+        telemetry.events.emit(DeviceEvent.RepCompleted)
+        telemetry.events.emit(DeviceEvent.RepCompleted)
+        telemetry.events.emit(DeviceEvent.RepCompleted)
+
+        assertEquals(true, stepCounter.stopped)
+        assertEquals(42, sessionRepo.saved[0].steps)
+        assertEquals(0, viewModel.state.value.steps) // 会话结束后不保留实时步数
     }
 
     @Test

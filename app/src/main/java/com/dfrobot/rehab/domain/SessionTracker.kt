@@ -17,6 +17,7 @@ data class SessionStats(
  */
 class SessionTracker(
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val stepProvider: () -> Int = { 0 },
 ) {
     var phase: SessionPhase = SessionPhase.Idle
         private set
@@ -28,12 +29,14 @@ class SessionTracker(
         private set
 
     private var startMillis = 0L
+    private var baseSteps = 0
 
     fun start(ratio: TrainingRatio) {
         check(phase == SessionPhase.Idle) { "会话已在进行中" }
         phase = SessionPhase.Training
         repsCompleted = 0
         startMillis = nowMillis()
+        baseSteps = stepProvider()
         stats = SessionStats(0, ratio)
     }
 
@@ -62,6 +65,7 @@ class SessionTracker(
             ratio = ratio,
             repsCompleted = repsCompleted,
             completed = repsCompleted >= 3,
+            steps = (stepProvider() - baseSteps).coerceAtLeast(0),
         )
         reset()
         return session
@@ -74,6 +78,7 @@ class SessionTracker(
         phase = SessionPhase.Idle
         repsCompleted = 0
         startMillis = 0L
+        baseSteps = 0
         stats = SessionStats(0)
     }
 }
