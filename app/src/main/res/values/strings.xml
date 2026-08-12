@@ -7,21 +7,40 @@
     <string name="nav_history">历史</string>
     <string name="nav_settings">设置</string>
 
-    <!-- 监测页:远程训练控制台 -->
-    <string name="monitor_connected">已连接</string>
-    <string name="monitor_connecting">正在连接…</string>
-    <string name="monitor_disconnected">已断开,点按重连</string>
-    <string name="monitor_device_online">设备已上线</string>
-    <string name="monitor_device_unknown">未收到设备消息</string>
-    <string name="monitor_training_title">选择比例开始训练</string>
-    <string name="monitor_ratio_25">25% 训练</string>
-    <string name="monitor_ratio_50">50% 训练</string>
-    <string name="monitor_ratio_75">75% 训练</string>
-    <string name="monitor_ratio_100">100% 训练</string>
+    <!-- 顶部应用栏 -->
+    <string name="top_bar_monitor">训练监测</string>
+    <string name="top_bar_history">训练历史</string>
+    <string name="top_bar_settings">设置</string>
+
+    <!-- 监测页:远程训练控制台(提案 §6 文案微调) -->
+    <!-- 合并状态栏 -->
+    <string name="monitor_status_connected">已连接 · 设备在线</string>
+    <string name="monitor_status_connected_no_device">已连接 · 等待设备</string>
+    <string name="monitor_status_connecting">正在连接…</string>
+    <string name="monitor_status_disconnected">连接已断开,点击重试</string>
+    <!-- 比例选择区 -->
+    <string name="monitor_select_ratio">选择训练比例</string>
+    <string name="monitor_ratio_25">25%%</string>
+    <string name="monitor_ratio_50">50%%</string>
+    <string name="monitor_ratio_75">75%%</string>
+    <string name="monitor_ratio_100">100%%</string>
+    <string name="monitor_ratio_subtitle_25">适应期 · 负重较轻</string>
+    <string name="monitor_ratio_subtitle_50">标准训练</string>
+    <string name="monitor_ratio_subtitle_75">负重较大</string>
+    <string name="monitor_ratio_subtitle_100">最大负重</string>
+    <!-- 语音测试 -->
     <string name="monitor_hello_test">语音测试</string>
-    <string name="monitor_training_in_progress">设备训练中…</string>
-    <string name="monitor_rep_progress">第 %1$d/3 次完成</string>
+    <!-- 训练进度卡 -->
+    <string name="monitor_progress_title">训练进度</string>
+    <string name="monitor_rep_progress">第 %1$d/3 次</string>
     <string name="monitor_session_stats">时长 %1$s · 目标 %2$d%%</string>
+    <string name="monitor_steps_label">步数 %1$d</string>
+    <string name="monitor_steps_unsupported">设备不支持计步</string>
+    <string name="monitor_training_in_progress">设备训练中…</string>
+    <!-- 时间线 -->
+    <string name="monitor_timeline_title">事件时间线</string>
+    <string name="monitor_timeline_empty">尚无事件</string>
+    <!-- 与 VM 硬编码字面量保持一致(避免双源) -->
     <string name="monitor_event_reached">已达到目标重量</string>
     <string name="monitor_event_completed">完成一次重复</string>
     <string name="monitor_invalid_frames">数据帧无效:%1$d</string>
@@ -30,28 +49,32 @@
     <string name="err_not_connected_cmd">未连接,请先连接平台</string>
     <string name="err_training_busy">设备训练中,请等待当前训练结束</string>
     <string name="err_send_failed">指令发送失败</string>
+    <string name="err_connection_failed">连接失败</string>
     <string name="settings_needed_hint">请先在「设置」页填写平台连接信息</string>
 
-    <!-- 历史页 -->
+    <!-- 历史页(提案 §4 卡片化 + 步数) -->
     <string name="history_empty">暂无训练记录,去监测页开始第一次训练吧</string>
     <string name="history_delete_confirm">删除这条训练记录?</string>
     <string name="history_delete">删除</string>
     <string name="history_cancel">取消</string>
     <string name="history_detail_title">训练详情</string>
-    <string name="history_ratio">目标比例:%1$d%%</string>
+    <string name="history_ratio">目标比例 %1$d%%</string>
     <string name="history_reps">完成 %1$d/3 次</string>
-    <string name="history_duration">时长:%1$s</string>
+    <string name="history_duration">时长 %1$s</string>
+    <string name="history_steps">步数 %1$d</string>
+    <string name="history_steps_unsupported">计步不可用</string>
     <string name="history_status_done">已完成</string>
     <string name="history_status_incomplete">未完成</string>
     <string name="deleted">已删除</string>
 
-    <!-- 设置页 -->
+    <!-- 设置页(提案 §4 分组卡片化 + Topic 说明) -->
     <string name="settings_connection_section">平台连接</string>
     <string name="settings_host">服务器地址</string>
     <string name="settings_port">端口</string>
     <string name="settings_iot_id">Iot_id(用户名)</string>
     <string name="settings_iot_pwd">Iot_pwd(密码)</string>
     <string name="settings_topic">设备 Topic</string>
+    <string name="settings_topic_hint">发布与订阅使用同一 Topic(与康复靴固件约定)</string>
     <string name="settings_test_connection">测试连接</string>
     <string name="settings_enable_connection">启用后台连接</string>
     <string name="settings_connection_on">连接已启用,后台服务已启动</string>
@@ -61,10 +84,10 @@
     <string name="settings_saved">已保存</string>
     <string name="settings_ratio_hint">训练比例在监测页选择(25/50/75/100%%),设备端语音播报;设备体重由掌控板按键调节。</string>
     <string name="settings_about_section">关于</string>
-    <string name="settings_plaintext_warning">⚠ 平台连接不含加密(明文 TCP 1883),请勿在不可信网络使用</string>
+    <string name="settings_plaintext_warning">平台连接为明文传输,请勿在公共网络使用</string>
     <string name="settings_version">版本 %1$s</string>
 
-    <!-- 连接错误(与代码内一致) -->
+    <!-- 连接错误 -->
     <string name="err_network">网络不可达,请检查网络或服务器地址</string>
     <string name="err_auth">连接被拒绝,请检查 Iot_id / Iot_pwd 与服务器</string>
     <string name="err_timeout">连接超时,请检查网络</string>

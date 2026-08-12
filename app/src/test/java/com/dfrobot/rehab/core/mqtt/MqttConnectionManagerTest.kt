@@ -79,6 +79,7 @@ class MqttConnectionManagerTest {
         val device = deviceClient()
         // 先订阅再发布,避免消息在订阅前被 SharedFlow 丢弃
         val received = async { manager.inboundMessages.first() }
+        kotlinx.coroutines.yield() // 让收集器完成订阅
         device.publishWith()
             .topic(settings.topic)
             .qos(MqttQos.AT_MOST_ONCE)

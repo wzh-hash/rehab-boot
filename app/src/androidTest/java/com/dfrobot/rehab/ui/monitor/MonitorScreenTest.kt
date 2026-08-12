@@ -19,6 +19,10 @@ import org.junit.Test
 /**
  * 仪器测试(真机/模拟器执行):
  * ./gradlew :app:connectedDebugAndroidTest
+ *
+ * 文案按 v3 设计提案 §6 更新:
+ * - 按钮主文案只显示比例数字("25%"),副标另行断言
+ * - 状态栏文案:"连接已断开,点击重试"
  */
 class MonitorScreenTest {
 
@@ -43,10 +47,14 @@ class MonitorScreenTest {
                 phase = SessionPhase.Idle,
             ),
         )
-        composeRule.onNodeWithText("25% 训练").assertIsDisplayed()
-        composeRule.onNodeWithText("50% 训练").assertIsDisplayed()
-        composeRule.onNodeWithText("75% 训练").assertIsDisplayed()
-        composeRule.onNodeWithText("100% 训练").assertIsDisplayed()
+        composeRule.onNodeWithText("25%").assertIsDisplayed()
+        composeRule.onNodeWithText("50%").assertIsDisplayed()
+        composeRule.onNodeWithText("75%").assertIsDisplayed()
+        composeRule.onNodeWithText("100%").assertIsDisplayed()
+        composeRule.onNodeWithText("适应期 · 负重较轻").assertIsDisplayed()
+        composeRule.onNodeWithText("标准训练").assertIsDisplayed()
+        composeRule.onNodeWithText("负重较大").assertIsDisplayed()
+        composeRule.onNodeWithText("最大负重").assertIsDisplayed()
         composeRule.onNodeWithText("语音测试").assertIsDisplayed()
     }
 
@@ -58,11 +66,12 @@ class MonitorScreenTest {
                 phase = SessionPhase.Training,
                 stats = SessionStats(0, TrainingRatio.T25),
                 activeRatio = TrainingRatio.T25,
+                repsCompleted = 1,
             ),
         )
-        composeRule.onNodeWithText("25% 训练").assertIsNotEnabled()
+        composeRule.onNodeWithText("25%").assertIsNotEnabled()
         composeRule.onNodeWithText("设备训练中…").assertIsDisplayed()
-        composeRule.onNodeWithText("第 0/3 次完成").assertIsDisplayed()
+        composeRule.onNodeWithText("第 1/3 次").assertIsDisplayed()
     }
 
     @Test
@@ -75,24 +84,35 @@ class MonitorScreenTest {
             ),
             onIntent = { captured = it },
         )
-        composeRule.onNodeWithText("25% 训练").performClick()
+        composeRule.onNodeWithText("25%").performClick()
         assertEquals(MonitorIntent.StartTraining(TrainingRatio.T25), captured)
     }
 
     @Test
     fun 断开状态显示重连提示() {
         setContent(MonitorUiState(connectionState = ConnectionState.Disconnected))
-        composeRule.onNodeWithText("已断开,点按重连").assertIsDisplayed()
+        composeRule.onNodeWithText("连接已断开,点击重试").assertIsDisplayed()
     }
 
     @Test
-    fun 设备上线徽标显示() {
+    fun 设备在线合并状态栏文案() {
         setContent(
             MonitorUiState(
                 connectionState = ConnectionState.Connected,
                 deviceOnline = true,
             ),
         )
-        composeRule.onNodeWithText("设备已上线").assertIsDisplayed()
+        composeRule.onNodeWithText("已连接 · 设备在线").assertIsDisplayed()
+    }
+
+    @Test
+    fun 等待设备状态显示() {
+        setContent(
+            MonitorUiState(
+                connectionState = ConnectionState.Connected,
+                deviceOnline = false,
+            ),
+        )
+        composeRule.onNodeWithText("已连接 · 等待设备").assertIsDisplayed()
     }
 }
