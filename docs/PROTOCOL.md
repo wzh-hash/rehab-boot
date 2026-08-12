@@ -1,105 +1,76 @@
-# 康复训练助手 × 康复靴 通信协议(设备固件对接)
+# 康复训练助手 × 康复靴 通信协议(掌控板 Mind+ 固件实际协议)
 
-本文档定义康复靴(掌控板 ESP32)与安卓应用「康复训练助手」之间通过 DFRobot Easy IoT 平台的通信约定。固件按此文档实现。
+本文档基于用户提供的实际烧录固件(Mind+ 生成,掌控板)编写,是应用与设备联调的唯一依据。
 
-## 平台连接参数
+## 平台连接参数(固件实测)
 
-| 参数 | 值 |
+| 参数 | 固件硬编码值 |
 |---|---|
 | Broker | `iot.dfrobot.com.cn` |
 | 端口 | `1883`(仅明文 TCP,平台不支持 TLS) |
-| 协议 | MQTT 3.1.1 |
-| 用户名 | 网页控制台账号的 `Iot_id` |
-| 密码 | 网页控制台账号的 `Iot_pwd` |
-| ClientID | 任意字符串(平台不校验) |
+| iot_id | `TyFA89yHR`(账号级) |
+| iot_pwd | `5318397328084412`(账号级) |
+| Topic | `wIOqDXyDg`(固件 topics[0] = topic_1,发布与订阅同一 topic) |
 
-获取方式:注册并登录 https://iot.dfrobot.com.cn → 工作间 → 左侧显示账号级 `Iot_id`/`Iot_pwd`(点击眼睛图标显示);「添加新的设备」生成设备 Topic。
+> 凭据为账号级;固件中 `myIot.init("iot.dfrobot.com.cn","TyFA89yHR","5318397328084412","I0rtPo-DR",topics,1883)` 的 "I0rtPo-DR" 是数据通道参数,应用只需使用 topic_1 `wIOqDXyDg`。**换账号需同步修改固件与 App。**
 
-## Topic
+## 消息协议(短码,单 topic 双向)
 
-**发布与订阅使用同一个 Topic**,即设备 ID(控制台生成的扁平随机字符串,如 `BJpHJt1VW`),无层级、无通配符。平台不接受客户端自造 Topic。
+### 1. App → 设备:控制指令(QoS 1,retained=false)
 
-## 消息格式(JSON 信封,方向由 type 区分)
-
-### 1. 设备 → 应用:压力上报
-
-```json
-{"type":"data","p":12.5,"ts":1723456789}
-```
-
-| 字段 | 含义 |
+| 载荷 | 含义 |
 |---|---|
-| `type` | 固定 `"data"` |
-| `p` | 当前负重,单位 kg,浮点数(建议一位小数,如 12.5) |
-| `ts` | 上报时 Unix 毫秒时间戳(可选,应用会以收到时刻兜底) |
+| `S` | 语音问候测试(固件播报"你好患者") |
+| `A` | 开始训练,目标比例 25% |
+| `B` | 开始训练,目标比例 50% |
+| `C` | 开始训练,目标比例 75% |
+| `D` | 开始训练,目标比例 100% |
 
-**上报频率建议 1~2Hz**(步态周期尺度足够;注意平台免费账号每设备最多存储 1000 条消息,存满后不再存储,高频上报会快速耗尽配额)。
+**retained 必须为 false**:固件订阅时会立即收到 broker 保留的消息,开启 retained 会导致设备开机误触发训练。
 
-### 2. 应用 → 设备:阈值配置
+### 2. 设备 → App:状态事件(QoS 0)
 
-```json
-{"type":"config","p25":15.0,"p50":30.0,"p75":45.0}
-```
-
-| 字段 | 含义 |
+| 载荷 | 含义 |
 |---|---|
-| `type` | 固定 `"config"` |
-| `p25`/`p50`/`p75` | 三档负重阈值,单位 kg(应用按 体重 × 百分比 换算) |
+| `hello` | 设备上电 / MQTT 连接成功后发布一次(用于判断设备在线) |
+| `WA` | 某次重复的压力超过 体重×比例(固件语音"已达到训练的重量") |
+| `plus` | 完成一次重复(语音+LED 闪烁后发布) |
 
-- 应用以 **QoS 1 + retained=true** 发布:设备每次(重新)订阅该 Topic 时,broker 会立即把最新保留的配置推给设备——**设备固件在 connect + subscribe 之后,应把收到的第一条 retained 消息当作当前阈值**。
-- 语音提醒语义建议:达到 25% 档提醒一次(如"已达到目标负重"),达到 50% 提醒两次/更高音量,超过 75% 持续提示(如"负重过高,请注意")。
+### 3. 固件行为要点(影响 App 逻辑)
 
-### 3. 双向过滤规则
+- **无压力数据上报**:HX711 读数仅在掌控板 OLED 本地显示,App 无法获取实时压力
+- **训练循环阻塞**:`DF_XunLian(ratio)` 循环至 3 次重复完成;期间收到的指令会排队到训练结束后由 loop() 处理 → **App 在训练中必须禁用发令按钮**
+- **训练结束**:3 次 `plus` 后自动结束;无中途停止指令
+- **设备体重**:由掌控板 P14/P15 按键 ±1kg 调节(默认 50kg),App 无法修改
+- 每次重复达标时可能连续发布多次 `WA`(压力持续高于阈值);`plus` 才是完成计数依据
 
-- 设备固件:忽略所有 `type` 不是 `"config"` 的消息(应用发的 `data` 帧不要回显)。
-- 应用:忽略所有 `type` 不是 `"data"` 的消息;任何非法 JSON / 未知 type / 负值一律丢弃并计数。
+### 4. 固件源码对照(节选)
 
-## MicroPython(uPyCraft / 掌控板)示例
-
-```python
-from umqtt.simple import MQTTClient
-import ubinascii
-import machine
-import json
-
-SERVER = "iot.dfrobot.com.cn"
-IOT_ID = "你的Iot_id"      # 控制台账号级
-IOT_PWD = "你的Iot_pwd"
-TOPIC = "你的设备Topic"    # 如 BJpHJt1VW
-CLIENT_ID = ubinascii.hexlify(machine.unique_id())  # 任意即可
-
-p25 = p50 = p75 = 0.0  # 初始阈值,收到 config 帧后更新
-
-def sub_cb(topic, msg):
-    global p25, p50, p75
-    try:
-        frame = json.loads(msg)
-        if frame.get("type") == "config":
-            p25 = float(frame["p25"]); p50 = float(frame["p50"]); p75 = float(frame["p75"])
-            print("阈值已更新:", p25, p50, p75)
-    except Exception:
-        pass  # 乱帧忽略
-
-client = MQTTClient(CLIENT_ID, SERVER, port=1883, user=IOT_ID, password=IOT_PWD)
-client.set_callback(sub_cb)
-client.connect()
-client.subscribe(TOPIC)
-
-def report(pressure_kg):
-    payload = '{"type":"data","p":%.1f}' % pressure_kg
-    client.publish(TOPIC, payload)
-
-# 主循环:每 500ms 上报一次压力,期间处理收到的 config
-while True:
-    client.check_msg()
-    report(read_pressure_kg())   # read_pressure_kg() 由你的 HX711 读取代码实现
-    time.sleep_ms(500)
+```cpp
+// 订阅回调:收到 App 指令
+void obloqMqttEventTnhj9l(String& message) { mind_s_MQTT = message; }
+// loop():指令分发
+if (mind_s_MQTT == "S") { sstts.speak("你好患者"); ... }
+if (mind_s_MQTT == "A") { DF_XunLian(0.25); ... }   // B→0.5  C→0.75  D→1.0
+// DF_XunLian:循环至 3 次达标
+if (mind_n_hx711 > mind_n_heavy * mind_n_BiZhi) {
+    myIot.publish(topic_1, "WA");
+    sstts.speak("已达到训练的重量");
+    /* LED 闪烁 ×3 */
+    myIot.publish(topic_1, "plus");
+    mind_n_cnt += 1;
+}
 ```
 
-> 注意:MicroPython 的 `umqtt.simple` 不支持 retained 标志位;若需固件端测试 retained 语义,用支持 retained 的客户端(如 Arduino PubSubClient 的 `publish(topic, payload, true)`)。应用下发本来就是 retained,固件只要在订阅后处理第一条 config 消息即可。
+## App 端对应逻辑
+
+- 监测页发令后进入"训练中",收到 3 次 `plus` 自动结束并记录会话(目标比例/次数/时长/完成状态)
+- 10 分钟无 `plus` 事件 → 会话标记"未完成"结束(设备离线/未达标场景)
+- `hello` → 设备上线徽标;连接断开 → 徽标复位
+- 未知载荷 → 无效帧计数(零容忍,不崩溃)
 
 ## 平台限制提醒
 
-- 免费账号总存储 1 万条消息,每设备最多 1000 条;存满后新消息不再存储(实时推送不受影响,但控制台历史不再增长)。
-- 设备数上限 10 个/账号。`重新生成` Iot_id/Iot_pwd 会使所有现有程序失效。
-- 明文 1883:请勿在不可信网络(公共 WiFi)使用。
+- 免费账号总存储 1 万条消息,每设备最多 1000 条(短码协议消息量极小,无压力)
+- 设备数上限 10 个/账号;`重新生成` Iot_id/Iot_pwd 会使固件与 App 全部失效
+- 明文 1883:请勿在不可信网络(公共 WiFi)使用

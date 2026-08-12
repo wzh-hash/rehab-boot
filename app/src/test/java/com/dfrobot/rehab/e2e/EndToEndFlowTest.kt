@@ -2,13 +2,11 @@ package com.dfrobot.rehab.e2e
 
 import com.dfrobot.rehab.core.mqtt.MqttConnectionManager
 import com.dfrobot.rehab.data.mqtt.MqttTelemetryDataSource
-import com.dfrobot.rehab.data.protocol.ProtocolCodec
 import com.dfrobot.rehab.domain.SessionTracker
-import com.dfrobot.rehab.domain.ThresholdCalculator
 import com.dfrobot.rehab.domain.model.ConnectionState
+import com.dfrobot.rehab.domain.model.DeviceEvent
 import com.dfrobot.rehab.domain.model.DeviceSettings
-import com.dfrobot.rehab.domain.model.PressureSample
-import com.dfrobot.rehab.domain.model.Thresholds
+import com.dfrobot.rehab.domain.model.TrainingRatio
 import com.dfrobot.rehab.domain.model.TrainingSession
 import com.dfrobot.rehab.domain.repository.DeviceSettingsRepository
 import com.dfrobot.rehab.domain.repository.TrainingSessionRepository
@@ -17,7 +15,6 @@ import com.hivemq.client.mqtt.MqttClient
 import com.hivemq.client.mqtt.MqttGlobalPublishFilter
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3BlockingClient
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,10 +29,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 
 /**
- * 端到端闭环:嵌入式 broker 模拟设备,验证
- * 连接 → 设备上报 → app 实时接收 → 会话统计 → 汇总落库 → 阈值下发(retained)全链路。
+ * 端到端闭环(短码协议):嵌入式 broker 模拟掌控板固件,验证
+ * 连接 → 指令下发("A")→ 设备事件上报(hello/WA/plus×3)→ 会话落库 全链路。
  */
 class EndToEndFlowTest {
 
@@ -46,20 +44,13 @@ class EndToEndFlowTest {
                 port = brokerPort,
                 iotId = "test-user",
                 iotPwd = "test-pwd",
-                topic = "BJpHJt1VW",
+                topic = "wIOqDXyDg",
             ),
         )
 
         override val settings: Flow<DeviceSettings> = settingsFlow.asStateFlow()
         override suspend fun saveSettings(settings: DeviceSettings) {
             settingsFlow.value = settings
-        }
-
-        override val weightPercentages: Flow<Pair<Double, Triple<Int, Int, Int>>> =
-            MutableStateFlow(60.0 to Triple(25, 50, 75)).asStateFlow()
-
-        override suspend fun saveWeightPercentages(bodyWeightKg: Double, p25: Int, p50: Int, p75: Int) {
-            // no-op
         }
     }
 
@@ -78,14 +69,7 @@ class EndToEndFlowTest {
     }
 
     @Test(timeout = 60_000)
-    fun `完整闭环_设备上报到会话落库与阈值下发`() = runBlocking {
-        val settings = DeviceSettings(
-            host = "127.0.0.1",
-            port = brokerPort,
-            iotId = "test-user",
-            iotPwd = "test-pwd",
-            topic = "BJpHJt1VW",
-        )
+    fun `完整闭环_指令下发与事件驱动会话落库`() = runBlocking {
         val manager = MqttConnectionManager()
         val settingsRepo = FakeSettingsRepo()
         val dataSource = MqttTelemetryDataSource(manager, settingsRepo)
@@ -93,79 +77,77 @@ class EndToEndFlowTest {
         val sessionRepo = FakeSessionRepo()
 
         // 1. 连接
-        manager.connect(settings)
+        manager.connect(settingsRepo.settings.first())
         awaitCondition { manager.connectionState.value == ConnectionState.Connected }
 
-        // 2. 设备端客户端:订阅 topic,准备接收配置
+        // 2. 设备端客户端:订阅 topic,准备接收指令
         val device = deviceClient()
         device.subscribeWith()
-            .topicFilter(settings.topic)
+            .topicFilter("wIOqDXyDg")
             .qos(MqttQos.AT_LEAST_ONCE)
             .send()
         val publishes = device.publishes(MqttGlobalPublishFilter.ALL)
 
-        // 3. 训练会话:开始,设备上报 20 帧(2Hz 模拟)
-        tracker.start()
-        val collected = mutableListOf<PressureSample>()
+        // 3. App 下发 25% 训练指令
+        dataSource.publishCommand(TrainingRatio.T25)
+        val command = publishes.receive(10, TimeUnit.SECONDS).orElseThrow()
+            .payloadAsBytes.toString(Charsets.UTF_8)
+        assertEquals("A", command)
+        // retained 语义由 manager 单测覆盖,此处仅断言指令内容
+
+        // 4. 设备上报事件流:hello → WA → plus ×3
+        val collected = mutableListOf<DeviceEvent>()
         val collectJob = launch {
-            dataSource.observeSamples().take(20).toList(collected)
+            dataSource.observeEvents().take(5).toList(collected)
         }
-        for (i in 1..20) {
-            val value = 5.0 + i * 1.5 // 5.0, 6.5, ..., 33.5
+        // 让收集器完成订阅,避免首帧在订阅前被丢弃
+        kotlinx.coroutines.delay(100)
+        for (payload in listOf("hello", "WA", "plus", "plus", "plus")) {
             device.publishWith()
-                .topic(settings.topic)
+                .topic("wIOqDXyDg")
                 .qos(MqttQos.AT_MOST_ONCE)
-                .payload(
-                    """{"type":"data","p":$value,"ts":${1_000L * i}}"""
-                        .toByteArray(Charsets.UTF_8),
-                )
+                .payload(payload.toByteArray(Charsets.UTF_8))
                 .send()
             kotlinx.coroutines.delay(10)
         }
-        collectJob.join()
+        withTimeout(10_000) { collectJob.join() }
 
-        // 4. 会话统计正确
-        assertEquals(20, collected.size)
-        for (sample in collected) tracker.ingest(sample)
+        // 5. 事件解析正确
+        assertEquals(
+            listOf(DeviceEvent.Hello, DeviceEvent.RepReached, DeviceEvent.RepCompleted,
+                DeviceEvent.RepCompleted, DeviceEvent.RepCompleted),
+            collected,
+        )
+
+        // 6. 事件驱动会话:3 次 plus 完成
+        tracker.start(TrainingRatio.T25)
+        for (event in collected) {
+            when (event) {
+                DeviceEvent.Hello, DeviceEvent.RepReached -> {}
+                DeviceEvent.RepCompleted -> tracker.onRepCompleted()
+            }
+        }
         val session = tracker.finish()
-        assertEquals(35.0, session.peakPressureKg, 0.0) // i=20 → 5.0+20*1.5=35.0
-        assertEquals(20.75, session.avgPressureKg, 0.01) // (6.5+35.0)/2
+        assertEquals(3, session.repsCompleted)
+        assertEquals(true, session.completed)
         sessionRepo.saveSession(session)
         assertEquals(1, sessionRepo.saved.size)
+        assertEquals(TrainingRatio.T25, sessionRepo.saved[0].ratio)
 
-        // 5. 阈值下发:设备端收到 retained config 帧
-        // (publishes 流会先收到 20 条 data 帧,循环丢弃直到 config 帧)
-        val thresholds = ThresholdCalculator.fromPercentages(60.0, 25, 50, 75)
-        dataSource.publishThresholds(thresholds)
-        val expected = ProtocolCodec.encodeConfig(thresholds).toString(Charsets.UTF_8)
-        val actual = withTimeout(10_000) {
-            var payload: String? = null
-            while (payload == null || !payload.contains("\"type\":\"config\"")) {
-                val publish = publishes.receive(2, java.util.concurrent.TimeUnit.SECONDS)
-                    .orElse(null) ?: break
-                payload = publish.payloadAsBytes.toString(Charsets.UTF_8)
-            }
-            payload
-        }
-        assertEquals(expected, actual)
+        // 7. 乱帧计数
+        device.publishWith()
+            .topic("wIOqDXyDg")
+            .qos(MqttQos.AT_MOST_ONCE)
+            .payload("garbage".toByteArray())
+            .send()
+        awaitCondition { manager.invalidFrameCount.value >= 1 }
+        assertEquals(1, manager.invalidFrameCount.value)
 
-        // 6. 清理
+        // 8. 清理
         publishes.close()
         device.disconnect()
         manager.disconnect()
         assertEquals(ConnectionState.Disconnected, manager.connectionState.value)
-    }
-
-    @Test(timeout = 60_000)
-    fun `会话统计平均值与峰值精确`() {
-        val tracker = SessionTracker()
-        tracker.start()
-        tracker.ingest(PressureSample(5.0, 1L))
-        tracker.ingest(PressureSample(10.0, 2L))
-        tracker.ingest(PressureSample(15.0, 3L))
-        val session = tracker.finish()
-        assertEquals(10.0, session.avgPressureKg, 0.0)
-        assertEquals(15.0, session.peakPressureKg, 0.0)
     }
 
     private fun deviceClient(): Mqtt3BlockingClient =
