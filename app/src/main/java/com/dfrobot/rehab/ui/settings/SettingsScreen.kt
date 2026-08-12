@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -48,6 +49,7 @@ import com.dfrobot.rehab.presentation.settings.SettingsEffect
 import com.dfrobot.rehab.presentation.settings.SettingsIntent
 import com.dfrobot.rehab.presentation.settings.SettingsUiState
 import com.dfrobot.rehab.presentation.settings.SettingsViewModel
+import com.dfrobot.rehab.ui.feedback.performClickHaptic
 
 @Composable
 fun SettingsRoute(
@@ -176,14 +178,21 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val hapticFeedback = LocalHapticFeedback.current
                         OutlinedButton(
-                            onClick = { onIntent(SettingsIntent.TestConnection) },
+                            onClick = {
+                                hapticFeedback.performClickHaptic()
+                                onIntent(SettingsIntent.TestConnection)
+                            },
                             modifier = Modifier.weight(1f),
                         ) {
                             Text(stringResource(R.string.settings_test_connection))
                         }
                         Button(
-                            onClick = { onIntent(SettingsIntent.Save) },
+                            onClick = {
+                                hapticFeedback.performClickHaptic()
+                                onIntent(SettingsIntent.Save)
+                            },
                             modifier = Modifier.weight(1f),
                             enabled = !state.isSaving,
                         ) {
@@ -199,9 +208,13 @@ fun SettingsScreen(
                             stringResource(R.string.settings_enable_connection),
                             style = MaterialTheme.typography.bodyLarge,
                         )
+                        val switchHaptic = LocalHapticFeedback.current
                         Switch(
                             checked = state.connectionEnabled,
-                            onCheckedChange = onConnectionToggled,
+                            onCheckedChange = { enabled ->
+                                switchHaptic.performClickHaptic()
+                                onConnectionToggled(enabled)
+                            },
                         )
                     }
                 }

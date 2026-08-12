@@ -94,4 +94,14 @@
     <string name="err_auth">连接被拒绝,请检查 Iot_id / Iot_pwd 与服务器</string>
     <string name="err_timeout">连接超时,请检查网络</string>
     <string name="err_settings_incomplete">请填写完整的连接信息(服务器/端口/账号/密码/Topic)</string>
+
+    <!-- 数据可视化(今日概览 + 近 7 天柱状图) -->
+    <string name="today_stats_title">今日训练</string>
+    <string name="today_sessions">训练次数</string>
+    <string name="today_duration">总时长</string>
+    <string name="today_steps">总步数</string>
+    <string name="today_duration_hours_minutes">%1$d:%2$02d</string>
+    <string name="today_duration_minutes_only">%1$d 分</string>
+    <string name="weekly_chart_title">近 7 天训练</string>
+    <string name="stats_empty">暂无训练数据,开始第一次训练吧</string>
 </resources>

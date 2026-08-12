@@ -1,7 +1,9 @@
 package com.dfrobot.rehab.presentation.monitor
 
+import com.dfrobot.rehab.domain.DailyStat
 import com.dfrobot.rehab.domain.SessionPhase
 import com.dfrobot.rehab.domain.SessionStats
+import com.dfrobot.rehab.domain.TodayStats
 import com.dfrobot.rehab.domain.model.ConnectionState
 import com.dfrobot.rehab.domain.model.TrainingRatio
 
@@ -25,6 +27,10 @@ data class MonitorUiState(
     val stepsSupported: Boolean = false,
     /** 训练期间实时步数。 */
     val steps: Int = 0,
+    /** 今日训练统计(数据可视化)。 */
+    val todayStats: TodayStats? = null,
+    /** 近 7 天训练统计(数据可视化)。 */
+    val weeklyStats: List<DailyStat> = emptyList(),
 ) {
     val isConnecting: Boolean get() = connectionState == ConnectionState.Connecting
 

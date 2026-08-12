@@ -1,6 +1,5 @@
 package com.dfrobot.rehab.ui.history
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +41,8 @@ import com.dfrobot.rehab.domain.model.TrainingSession
 import com.dfrobot.rehab.presentation.history.HistoryEffect
 import com.dfrobot.rehab.presentation.history.HistoryIntent
 import com.dfrobot.rehab.presentation.history.HistoryViewModel
+import com.dfrobot.rehab.ui.feedback.performClickHaptic
+import com.dfrobot.rehab.ui.feedback.pressFeedback
 import com.dfrobot.rehab.ui.formatDuration
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -76,11 +78,13 @@ fun HistoryRoute(
     )
 
     confirmDeleteId?.let { id ->
+        val hapticFeedback = LocalHapticFeedback.current
         AlertDialog(
             onDismissRequest = { confirmDeleteId = null },
             title = { Text(stringResource(R.string.history_delete_confirm)) },
             confirmButton = {
                 TextButton(onClick = {
+                    hapticFeedback.performClickHaptic()
                     viewModel.accept(HistoryIntent.DeleteSession(id))
                     confirmDeleteId = null
                 }) {
@@ -88,7 +92,10 @@ fun HistoryRoute(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDeleteId = null }) {
+                TextButton(onClick = {
+                    hapticFeedback.performClickHaptic()
+                    confirmDeleteId = null
+                }) {
                     Text(stringResource(R.string.history_cancel))
                 }
             },
@@ -96,6 +103,7 @@ fun HistoryRoute(
     }
 
     detailSession?.let { session ->
+        val hapticFeedback = LocalHapticFeedback.current
         AlertDialog(
             onDismissRequest = { detailSession = null },
             title = { Text(stringResource(R.string.history_detail_title)) },
@@ -121,7 +129,10 @@ fun HistoryRoute(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { detailSession = null }) {
+                TextButton(onClick = {
+                    hapticFeedback.performClickHaptic()
+                    detailSession = null
+                }) {
                     Text(stringResource(R.string.history_cancel))
                 }
             },
@@ -179,7 +190,13 @@ private fun SessionCard(
     onDeleteClick: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pressFeedback(
+                enabled = true,
+                haptic = false,
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,

@@ -18,6 +18,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,6 +63,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -77,6 +81,8 @@ import com.dfrobot.rehab.presentation.monitor.MonitorEffect
 import com.dfrobot.rehab.presentation.monitor.MonitorIntent
 import com.dfrobot.rehab.presentation.monitor.MonitorUiState
 import com.dfrobot.rehab.presentation.monitor.MonitorViewModel
+import com.dfrobot.rehab.ui.feedback.performClickHaptic
+import com.dfrobot.rehab.ui.feedback.pressFeedback
 import com.dfrobot.rehab.ui.formatDuration
 import com.dfrobot.rehab.ui.theme.LocalRatioGradients
 import com.dfrobot.rehab.ui.theme.LocalStatusColors
@@ -155,6 +161,11 @@ fun MonitorScreen(
             ConnectionStatusBar(state, onIntent)
             RatioSelectionGrid(state, onIntent)
             VoiceTestRow(state, onIntent)
+            // 数据可视化(今日概览 + 近 7 天),空闲/训练态均显示
+            state.todayStats?.let { stats ->
+                TodayStatsCard(todayStats = stats)
+            }
+            WeeklyChartCard(weekly = state.weeklyStats)
             TrainingProgressCard(state)
             EventTimelineCard(state.recentEvents)
             if (state.invalidFrameCount > 0) {
@@ -209,9 +220,10 @@ private fun ConnectionStatusBar(
             .height(48.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(containerBg)
-            .clickable(enabled = state.connectionState != ConnectionState.Connecting) {
-                onIntent(MonitorIntent.RetryConnect)
-            }
+            .pressFeedback(
+                enabled = state.connectionState != ConnectionState.Connecting,
+                haptic = false,
+            ) { onIntent(MonitorIntent.RetryConnect) }
             .semantics { contentDescription = statusText },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -306,6 +318,16 @@ private fun RatioButton(
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "ratioButtonShadow",
     )
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val hapticFeedback = LocalHapticFeedback.current
+
+    // 训练比例按钮保留现有缩放+阴影反馈;按下时仅追加震动(沿用同一 interactionSource 让涟漪生效)
+    LaunchedEffect(isPressed, enabled) {
+        if (isPressed && enabled) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -323,7 +345,13 @@ private fun RatioButton(
                     end = Offset.Infinite,
                 ),
             )
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                // 沿用 M3 默认 ripple(LocalIndication),主色
+                indication = androidx.compose.foundation.LocalIndication.current,
+                enabled = enabled,
+                onClick = onClick,
+            )
             .then(
                 if (isActive) Modifier.border(
                     width = 2.dp,
@@ -375,8 +403,12 @@ private fun VoiceTestRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
     ) {
+        val hapticFeedback = LocalHapticFeedback.current
         TextButton(
-            onClick = { onIntent(MonitorIntent.HelloTest) },
+            onClick = {
+                hapticFeedback.performClickHaptic()
+                onIntent(MonitorIntent.HelloTest)
+            },
             enabled = state.connectionState == ConnectionState.Connected,
         ) {
             Icon(

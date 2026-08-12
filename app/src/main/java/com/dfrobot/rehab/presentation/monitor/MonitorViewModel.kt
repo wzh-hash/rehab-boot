@@ -7,6 +7,7 @@ import com.dfrobot.rehab.core.sensor.StepCounter
 import com.dfrobot.rehab.data.mqtt.TelemetryDataSource
 import com.dfrobot.rehab.domain.ConnectionGateway
 import com.dfrobot.rehab.domain.SessionPhase
+import com.dfrobot.rehab.domain.SessionStatsAggregator
 import com.dfrobot.rehab.domain.SessionTracker
 import com.dfrobot.rehab.domain.model.ConnectionState
 import com.dfrobot.rehab.domain.model.DeviceEvent
@@ -26,6 +27,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.time.ZoneId
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 /** 训练超时:10 分钟无 "plus" 事件视为未完成。 */
@@ -56,7 +61,28 @@ class MonitorViewModel @Inject constructor(
         observeInvalidFrames()
         observeErrors()
         observeEvents()
+        observeStats()
         tickElapsed()
+    }
+
+    /** 训练历史 → 今日概览 + 近 7 天统计(数据可视化)。 */
+    private fun observeStats() {
+        val dayLabelFormat = SimpleDateFormat("M/d", Locale.CHINA)
+        viewModelScope.launch {
+            trainingSessionRepository.observeSessions().collect { sessions ->
+                val now = System.currentTimeMillis()
+                val zoneId = ZoneId.systemDefault()
+                _state.update {
+                    it.copy(
+                        todayStats = SessionStatsAggregator.todayStats(sessions, now, zoneId),
+                        weeklyStats = SessionStatsAggregator.weeklyStats(
+                            sessions, now, zoneId,
+                            dayLabel = { millis -> dayLabelFormat.format(Date(millis)) },
+                        ),
+                    )
+                }
+            }
+        }
     }
 
     fun accept(intent: MonitorIntent) {
