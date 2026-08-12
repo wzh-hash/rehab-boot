@@ -1,21 +1,19 @@
 package com.dfrobot.rehab.domain
 
-import com.dfrobot.rehab.domain.model.PressureSample
+import com.dfrobot.rehab.domain.model.TrainingRatio
 import com.dfrobot.rehab.domain.model.TrainingSession
 
-enum class SessionPhase { Idle, Running, Paused }
+enum class SessionPhase { Idle, Training }
 
 data class SessionStats(
     val elapsedMillis: Long,
-    val sampleCount: Int,
-    val avgPressureKg: Double,
-    val peakPressureKg: Double,
+    val ratio: TrainingRatio? = null,
 )
 
 /**
- * 训练会话状态机(纯类,无协程无 Android):
- * Idle → Running ⇄ Paused → Idle(finish 后回到 Idle,产出 [TrainingSession])。
- * 仅 Running 期间计入样本;暂停冻结计时,恢复平移基准时间。
+ * 训练会话状态机(纯类,无协程无 Android),事件驱动:
+ * Idle →(start(ratio))→ Training →(3×onRepCompleted)finish 落库 → Idle。
+ * 固件无暂停/停止指令,无压力数据。
  */
 class SessionTracker(
     private val nowMillis: () -> Long = System::currentTimeMillis,
@@ -23,65 +21,47 @@ class SessionTracker(
     var phase: SessionPhase = SessionPhase.Idle
         private set
 
-    var stats: SessionStats = SessionStats(0, 0, 0.0, 0.0)
+    var repsCompleted: Int = 0
         private set
 
-    private var baseStartMillis = 0L
-    private var frozenElapsedMillis = 0L
-    private var sumPressureKg = 0.0
-    private var lastStartMillis = 0L
+    var stats: SessionStats = SessionStats(0)
+        private set
 
-    fun start() {
+    private var startMillis = 0L
+
+    fun start(ratio: TrainingRatio) {
         check(phase == SessionPhase.Idle) { "会话已在进行中" }
-        phase = SessionPhase.Running
-        lastStartMillis = nowMillis()
-        baseStartMillis = lastStartMillis
-        frozenElapsedMillis = 0L
-        sumPressureKg = 0.0
-        stats = SessionStats(0, 0, 0.0, 0.0)
+        phase = SessionPhase.Training
+        repsCompleted = 0
+        startMillis = nowMillis()
+        stats = SessionStats(0, ratio)
     }
 
-    fun pause() {
-        check(phase == SessionPhase.Running) { "会话未在训练中" }
-        phase = SessionPhase.Paused
-        frozenElapsedMillis = elapsedSince(lastStartMillis)
+    /** 固件发布一次 "plus" 即完成一次重复。 */
+    fun onRepCompleted() {
+        check(phase == SessionPhase.Training) { "没有进行中的会话" }
+        repsCompleted += 1
+        stats = stats.copy(elapsedMillis = elapsedSince(startMillis))
     }
 
-    fun resume() {
-        check(phase == SessionPhase.Paused) { "会话未暂停" }
-        phase = SessionPhase.Running
-        lastStartMillis = nowMillis()
-        baseStartMillis = lastStartMillis - frozenElapsedMillis
-    }
-
-    fun ingest(sample: PressureSample) {
-        if (phase != SessionPhase.Running) return
-        sumPressureKg += sample.valueKg
-        stats = SessionStats(
-            elapsedMillis = elapsedSince(lastStartMillis),
-            sampleCount = stats.sampleCount + 1,
-            avgPressureKg = sumPressureKg / (stats.sampleCount + 1),
-            peakPressureKg = maxOf(stats.peakPressureKg, sample.valueKg),
-        )
-    }
-
-    /** 刷新计时(无样本到达时由 UI 周期调用,保证时长持续走动)。 */
+    /** 刷新计时(无事件时由 UI 周期调用,保证时长持续走动)。 */
     fun tick() {
-        if (phase == SessionPhase.Running) {
-            stats = stats.copy(elapsedMillis = elapsedSince(lastStartMillis))
+        if (phase == SessionPhase.Training) {
+            stats = stats.copy(elapsedMillis = elapsedSince(startMillis))
         }
     }
 
+    /** 结束会话;completed = 3 次重复全部完成(超时/中断则为 false)。 */
     fun finish(): TrainingSession {
-        check(phase != SessionPhase.Idle) { "没有进行中的会话" }
-        val endMillis = nowMillis()
-        val duration = frozenElapsedMillis + if (phase == SessionPhase.Running) elapsedSince(lastStartMillis) else 0L
+        check(phase == SessionPhase.Training) { "没有进行中的会话" }
+        val ratio = stats.ratio ?: TrainingRatio.T25
         val session = TrainingSession(
-            startTimeMillis = baseStartMillis,
-            endTimeMillis = endMillis,
-            durationMillis = duration,
-            avgPressureKg = stats.avgPressureKg,
-            peakPressureKg = stats.peakPressureKg,
+            startTimeMillis = startMillis,
+            endTimeMillis = nowMillis(),
+            durationMillis = elapsedSince(startMillis),
+            ratio = ratio,
+            repsCompleted = repsCompleted,
+            completed = repsCompleted >= 3,
         )
         reset()
         return session
@@ -92,9 +72,8 @@ class SessionTracker(
 
     private fun reset() {
         phase = SessionPhase.Idle
-        baseStartMillis = 0L
-        frozenElapsedMillis = 0L
-        sumPressureKg = 0.0
-        stats = SessionStats(0, 0, 0.0, 0.0)
+        repsCompleted = 0
+        startMillis = 0L
+        stats = SessionStats(0)
     }
 }
