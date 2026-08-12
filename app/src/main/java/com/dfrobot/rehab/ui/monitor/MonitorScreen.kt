@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,7 +16,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -40,10 +38,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dfrobot.rehab.R
 import com.dfrobot.rehab.domain.SessionPhase
 import com.dfrobot.rehab.domain.model.ConnectionState
+import com.dfrobot.rehab.domain.model.TrainingRatio
 import com.dfrobot.rehab.presentation.monitor.MonitorEffect
 import com.dfrobot.rehab.presentation.monitor.MonitorIntent
 import com.dfrobot.rehab.presentation.monitor.MonitorUiState
 import com.dfrobot.rehab.presentation.monitor.MonitorViewModel
+import com.dfrobot.rehab.ui.formatDuration
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -89,25 +91,10 @@ fun MonitorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            ConnectionBanner(state.connectionState, onIntent)
-            WeightDisplay(state)
-            state.thresholds?.let { thresholds ->
-                Card {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            stringResource(R.string.monitor_thresholds),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ThresholdProgress(
-                            thresholds = thresholds,
-                            currentValueKg = state.livePressureKg,
-                        )
-                    }
-                }
-            }
-            TrendCard(state)
-            SessionControls(state, onIntent)
+            ConnectionBanner(state, onIntent)
+            DeviceStatusBadge(state)
+            TrainingButtons(state, onIntent)
+            TrainingProgressCard(state)
             if (state.invalidFrameCount > 0) {
                 Text(
                     stringResource(R.string.monitor_invalid_frames, state.invalidFrameCount),
@@ -121,10 +108,10 @@ fun MonitorScreen(
 
 @Composable
 private fun ConnectionBanner(
-    connectionState: ConnectionState,
+    state: MonitorUiState,
     onIntent: (MonitorIntent) -> Unit,
 ) {
-    val (text, color) = when (connectionState) {
+    val (text, color) = when (state.connectionState) {
         ConnectionState.Connected ->
             stringResource(R.string.monitor_connected) to Color(0xFF16A34A)
 
@@ -158,129 +145,128 @@ private fun ConnectionBanner(
 }
 
 @Composable
-private fun WeightDisplay(state: MonitorUiState) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+private fun DeviceStatusBadge(state: MonitorUiState) {
+    val online = state.deviceOnline && state.connectionState == ConnectionState.Connected
+    val color = if (online) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .background(
+                if (online) Color(0xFF16A34A).copy(alpha = 0.10f)
+                else MaterialTheme.colorScheme.surfaceVariant,
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            stringResource(R.string.monitor_current_weight),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color),
         )
         Text(
-            text = if (state.livePressureKg != null) {
-                String.format(Locale.US, "%.1f kg", state.livePressureKg)
-            } else {
-                stringResource(R.string.monitor_no_data)
-            },
-            style = MaterialTheme.typography.displayLarge,
-            fontWeight = FontWeight.Bold,
-            color = if (state.livePressureKg != null) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            stringResource(
+                if (online) R.string.monitor_device_online else R.string.monitor_device_unknown,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
         )
-        if (state.livePressureKg == null) {
-            Text(
-                stringResource(R.string.monitor_waiting_data),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
 @Composable
-private fun TrendCard(
-    state: MonitorUiState,
-) {
-    val buffer = PressureChart.rememberBuffer()
-    val now = state.livePressureAtMillis ?: System.currentTimeMillis()
-    state.livePressureKg?.let { buffer.add(now, it.toFloat()) }
-
-    Card {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                stringResource(R.string.monitor_trend_30s),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            PressureChart(
-                values = buffer.values(now),
-                maxValue = state.thresholds?.p75Kg?.toFloat()?.times(1.2f) ?: 10f,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SessionControls(
+private fun TrainingButtons(
     state: MonitorUiState,
     onIntent: (MonitorIntent) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        when (state.phase) {
-            SessionPhase.Idle -> Button(
-                onClick = { onIntent(MonitorIntent.StartSession) },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-            ) {
-                Text(stringResource(R.string.monitor_start))
-            }
-
-            SessionPhase.Running -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = { onIntent(MonitorIntent.PauseSession) },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) {
-                    Text(stringResource(R.string.monitor_pause))
-                }
-                Button(
-                    onClick = { onIntent(MonitorIntent.FinishSession) },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) {
-                    Text(stringResource(R.string.monitor_finish))
-                }
-            }
-
-            SessionPhase.Paused -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = { onIntent(MonitorIntent.ResumeSession) },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) {
-                    Text(stringResource(R.string.monitor_resume))
-                }
-                Button(
-                    onClick = { onIntent(MonitorIntent.FinishSession) },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) {
-                    Text(stringResource(R.string.monitor_finish))
+    val ratios = listOf(
+        TrainingRatio.T25 to R.string.monitor_ratio_25,
+        TrainingRatio.T50 to R.string.monitor_ratio_50,
+        TrainingRatio.T75 to R.string.monitor_ratio_75,
+        TrainingRatio.T100 to R.string.monitor_ratio_100,
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ratios.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { (ratio, labelRes) ->
+                    Button(
+                        onClick = { onIntent(MonitorIntent.StartTraining(ratio)) },
+                        enabled = state.canSendCommand,
+                        modifier = Modifier.weight(1f).height(56.dp),
+                    ) {
+                        Text(stringResource(labelRes))
+                    }
                 }
             }
         }
-        if (state.phase != SessionPhase.Idle) {
-            val elapsed = formatDuration(state.stats.elapsedMillis)
+        OutlinedButton(
+            onClick = { onIntent(MonitorIntent.HelloTest) },
+            enabled = state.connectionState == ConnectionState.Connected,
+            modifier = Modifier.fillMaxWidth().height(44.dp),
+        ) {
+            Text(stringResource(R.string.monitor_hello_test))
+        }
+        if (state.phase == SessionPhase.Training) {
             Text(
-                stringResource(
-                    R.string.monitor_session_stats,
-                    elapsed,
-                    state.stats.avgPressureKg,
-                    state.stats.peakPressureKg,
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                stringResource(R.string.monitor_training_in_progress),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         }
     }
 }
 
-/** 格式化时长:分:秒 */
-fun formatDuration(millis: Long): String {
-    val totalSeconds = millis / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.US, "%d:%02d", minutes, seconds)
+@Composable
+private fun TrainingProgressCard(state: MonitorUiState) {
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (state.phase == SessionPhase.Training) {
+                Text(
+                    stringResource(R.string.monitor_rep_progress, state.repsCompleted),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    stringResource(
+                        R.string.monitor_session_stats,
+                        formatDuration(state.stats.elapsedMillis),
+                        state.activeRatio?.percent ?: 0,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    stringResource(R.string.monitor_training_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (state.recentEvents.isNotEmpty()) {
+                state.recentEvents.takeLast(6).forEach { event ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            event.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            eventTimeFormat.format(Date(event.timeMillis)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
+
+private val eventTimeFormat = SimpleDateFormat("HH:mm:ss", Locale.CHINA)

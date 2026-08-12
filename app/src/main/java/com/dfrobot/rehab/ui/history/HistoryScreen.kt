@@ -35,7 +35,7 @@ import com.dfrobot.rehab.domain.model.TrainingSession
 import com.dfrobot.rehab.presentation.history.HistoryEffect
 import com.dfrobot.rehab.presentation.history.HistoryIntent
 import com.dfrobot.rehab.presentation.history.HistoryViewModel
-import com.dfrobot.rehab.ui.monitor.formatDuration
+import com.dfrobot.rehab.ui.formatDuration
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,9 +93,15 @@ fun HistoryRoute(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(formatDate(session.startTimeMillis))
+                    Text(stringResource(R.string.history_ratio, session.ratio.percent))
+                    Text(stringResource(R.string.history_reps, session.repsCompleted))
                     Text(stringResource(R.string.history_duration, formatDuration(session.durationMillis)))
-                    Text(stringResource(R.string.history_avg, session.avgPressureKg))
-                    Text(stringResource(R.string.history_peak, session.peakPressureKg))
+                    Text(
+                        stringResource(
+                            if (session.completed) R.string.history_status_done
+                            else R.string.history_status_incomplete,
+                        ),
+                    )
                 }
             },
             confirmButton = {
@@ -170,21 +176,28 @@ private fun SessionCard(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    stringResource(R.string.history_duration, formatDuration(session.durationMillis)),
+                    stringResource(R.string.history_ratio, session.ratio.percent),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    stringResource(R.string.history_peak, session.peakPressureKg),
+                    stringResource(R.string.history_reps, session.repsCompleted),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    stringResource(R.string.history_avg, session.avgPressureKg),
+                    stringResource(
+                        if (session.completed) R.string.history_status_done
+                        else R.string.history_status_incomplete,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (session.completed) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
                 )
             }
         }

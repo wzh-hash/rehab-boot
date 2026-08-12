@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -41,7 +42,6 @@ import com.dfrobot.rehab.presentation.settings.SettingsEffect
 import com.dfrobot.rehab.presentation.settings.SettingsIntent
 import com.dfrobot.rehab.presentation.settings.SettingsUiState
 import com.dfrobot.rehab.presentation.settings.SettingsViewModel
-import com.dfrobot.rehab.presentation.settings.WeightField
 
 @Composable
 fun SettingsRoute(
@@ -173,7 +173,7 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             stringResource(R.string.settings_enable_connection),
@@ -187,50 +187,15 @@ fun SettingsScreen(
                 }
             }
             Text(
+                stringResource(R.string.settings_ratio_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
                 stringResource(R.string.settings_plaintext_warning),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
-
-            // ---- 训练参数 ----
-            SectionTitle(stringResource(R.string.settings_training_section))
-            Card {
-                Column(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    OutlinedTextField(
-                        value = state.bodyWeightKg,
-                        onValueChange = { onIntent(SettingsIntent.WeightFieldChanged(WeightField.BODY_WEIGHT, it)) },
-                        label = { Text(stringResource(R.string.settings_body_weight)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = state.p25,
-                            onValueChange = { onIntent(SettingsIntent.WeightFieldChanged(WeightField.P25, it)) },
-                            label = { Text(stringResource(R.string.settings_p25)) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = state.p50,
-                            onValueChange = { onIntent(SettingsIntent.WeightFieldChanged(WeightField.P50, it)) },
-                            label = { Text(stringResource(R.string.settings_p50)) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = state.p75,
-                            onValueChange = { onIntent(SettingsIntent.WeightFieldChanged(WeightField.P75, it)) },
-                            label = { Text(stringResource(R.string.settings_p75)) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
 
             // ---- 关于 ----
             SectionTitle(stringResource(R.string.settings_about_section))
