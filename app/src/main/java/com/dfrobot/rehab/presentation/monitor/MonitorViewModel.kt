@@ -2,6 +2,7 @@ package com.dfrobot.rehab.presentation.monitor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dfrobot.rehab.R
 import com.dfrobot.rehab.core.sensor.StepCounter
 import com.dfrobot.rehab.data.mqtt.TelemetryDataSource
 import com.dfrobot.rehab.domain.ConnectionGateway
@@ -91,7 +92,8 @@ class MonitorViewModel @Inject constructor(
     private fun observeErrors() {
         viewModelScope.launch {
             connectionGateway.errorEvents.collect { message ->
-                emitEffect(MonitorEffect.ShowMessage(message))
+                // 连接错误为运行时动态文案(如"网络不可达…"),直接透传
+                emitEffect(MonitorEffect.ShowRawMessage(message))
             }
         }
     }
@@ -102,7 +104,7 @@ class MonitorViewModel @Inject constructor(
                 when (event) {
                     DeviceEvent.Hello -> _state.update { it.copy(deviceOnline = true) }
 
-                    DeviceEvent.RepReached -> appendEvent("已达到目标重量")
+                    DeviceEvent.RepReached -> appendEvent(R.string.monitor_event_reached)
 
                     DeviceEvent.RepCompleted -> onRepCompleted()
                 }
@@ -113,9 +115,9 @@ class MonitorViewModel @Inject constructor(
     private fun onRepCompleted() {
         if (tracker.phase != com.dfrobot.rehab.domain.SessionPhase.Training) return
         tracker.onRepCompleted()
-        appendEvent("完成一次重复")
+        appendEvent(R.string.monitor_event_completed)
         if (tracker.repsCompleted >= 3) {
-            finishSession("训练完成,已记录")
+            finishSession(R.string.session_done)
         }
     }
 
@@ -123,9 +125,10 @@ class MonitorViewModel @Inject constructor(
         if (!_state.value.canSendCommand) {
             emitEffect(
                 MonitorEffect.ShowMessage(
-                    when {
-                        _state.value.connectionState != ConnectionState.Connected -> "未连接,请先连接平台"
-                        else -> "设备训练中,请等待当前训练结束"
+                    if (_state.value.connectionState != ConnectionState.Connected) {
+                        R.string.err_not_connected_cmd
+                    } else {
+                        R.string.err_training_busy
                     },
                 ),
             )
@@ -133,7 +136,7 @@ class MonitorViewModel @Inject constructor(
         }
         viewModelScope.launch {
             runCatching { telemetryDataSource.publishCommand(ratio) }
-                .onFailure { emitEffect(MonitorEffect.ShowMessage(it.message ?: "指令发送失败")) }
+                .onFailure { emitEffect(MonitorEffect.ShowMessage(R.string.err_send_failed)) }
                 .onSuccess {
                     stepCounter.start()
                     tracker.start(ratio)
@@ -154,12 +157,12 @@ class MonitorViewModel @Inject constructor(
 
     private fun helloTest() {
         if (_state.value.connectionState != ConnectionState.Connected) {
-            emitEffect(MonitorEffect.ShowMessage("未连接,请先连接平台"))
+            emitEffect(MonitorEffect.ShowMessage(R.string.err_not_connected_cmd))
             return
         }
         viewModelScope.launch {
             runCatching { telemetryDataSource.publishHelloTest() }
-                .onFailure { emitEffect(MonitorEffect.ShowMessage(it.message ?: "指令发送失败")) }
+                .onFailure { emitEffect(MonitorEffect.ShowMessage(R.string.err_send_failed)) }
         }
     }
 
@@ -168,19 +171,19 @@ class MonitorViewModel @Inject constructor(
         timeoutJob = viewModelScope.launch {
             delay(SESSION_TIMEOUT_MS)
             if (tracker.phase == com.dfrobot.rehab.domain.SessionPhase.Training) {
-                finishSession("训练超时,已记录(未完成)")
+                finishSession(R.string.session_timeout)
             }
         }
     }
 
-    private fun finishSession(message: String) {
+    private fun finishSession(messageRes: Int) {
         timeoutJob?.cancel()
         timeoutJob = null
         stepCounter.stop()
         val session = tracker.finish()
         viewModelScope.launch {
             runCatching { trainingSessionRepository.saveSession(session) }
-            emitEffect(MonitorEffect.ShowMessage(message))
+            emitEffect(MonitorEffect.ShowMessage(messageRes))
         }
         _state.update {
             it.copy(
@@ -191,11 +194,11 @@ class MonitorViewModel @Inject constructor(
         }
     }
 
-    private fun appendEvent(text: String) {
+    private fun appendEvent(textRes: Int) {
         _state.update {
             val now = System.currentTimeMillis()
             it.copy(
-                recentEvents = (it.recentEvents + EventUi(now, text)).takeLast(MAX_EVENTS),
+                recentEvents = (it.recentEvents + EventUi(now, textRes)).takeLast(MAX_EVENTS),
             )
         }
     }
@@ -225,7 +228,7 @@ class MonitorViewModel @Inject constructor(
         viewModelScope.launch {
             val settings = settingsRepository.settings.first()
             if (!settings.isComplete()) {
-                emitEffect(MonitorEffect.ShowMessage("请先在「设置」页填写平台连接信息"))
+                emitEffect(MonitorEffect.ShowMessage(R.string.settings_needed_hint))
                 return@launch
             }
             try {
@@ -233,7 +236,8 @@ class MonitorViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                emitEffect(MonitorEffect.ShowMessage(e.message ?: "连接失败"))
+                // 连接错误为运行时动态文案(如"网络不可达…"),直接透传
+                emitEffect(MonitorEffect.ShowRawMessage(e.message ?: ""))
             }
         }
     }

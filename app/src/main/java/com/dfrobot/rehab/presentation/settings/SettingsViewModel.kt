@@ -2,6 +2,7 @@ package com.dfrobot.rehab.presentation.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dfrobot.rehab.R
 import com.dfrobot.rehab.domain.ConnectionGateway
 import com.dfrobot.rehab.domain.model.DeviceSettings
 import com.dfrobot.rehab.domain.repository.DeviceSettingsRepository
@@ -49,7 +50,7 @@ class SettingsViewModel @Inject constructor(
                     ConnectionField.IOT_PWD -> current.copy(iotPwd = intent.value)
                     ConnectionField.TOPIC -> current.copy(topic = intent.value.trim())
                 }
-                _state.update { it.copy(settings = updated, validationError = null) }
+                _state.update { it.copy(settings = updated, validationErrorRes = null) }
             }
 
             SettingsIntent.Save -> save()
@@ -63,7 +64,7 @@ class SettingsViewModel @Inject constructor(
         if (s.isSaving) return
         val validation = validate(s)
         if (validation != null) {
-            _state.update { it.copy(validationError = validation) }
+            _state.update { it.copy(validationErrorRes = validation) }
             return
         }
         viewModelScope.launch {
@@ -71,13 +72,12 @@ class SettingsViewModel @Inject constructor(
             runCatching {
                 settingsRepository.saveSettings(s.settings)
             }.onFailure { e ->
-                _state.update {
-                    it.copy(isSaving = false, validationError = e.message ?: "保存失败")
-                }
+                _state.update { it.copy(isSaving = false) }
+                _effects.send(SettingsEffect.ShowRawMessage(e.message ?: ""))
                 return@launch
             }
             _state.update { it.copy(isSaving = false) }
-            _effects.send(SettingsEffect.ShowMessage("已保存"))
+            _effects.send(SettingsEffect.ShowMessage(R.string.settings_saved))
         }
     }
 
@@ -86,7 +86,7 @@ class SettingsViewModel @Inject constructor(
         if (enabled) {
             val validation = validate(_state.value)
             if (validation != null) {
-                _state.update { it.copy(validationError = validation) }
+                _state.update { it.copy(validationErrorRes = validation) }
                 return
             }
         }
@@ -95,7 +95,7 @@ class SettingsViewModel @Inject constructor(
             _state.update { it.copy(connectionEnabled = enabled) }
             _effects.send(
                 SettingsEffect.ShowMessage(
-                    if (enabled) "连接已启用,后台服务已启动" else "连接已关闭,后台服务已停止",
+                    if (enabled) R.string.settings_connection_on else R.string.settings_connection_off,
                 ),
             )
         }
@@ -106,7 +106,7 @@ class SettingsViewModel @Inject constructor(
         val s = _state.value
         val validation = validate(s)
         if (validation != null) {
-            _state.update { it.copy(validationError = validation) }
+            _state.update { it.copy(validationErrorRes = validation) }
             return
         }
         viewModelScope.launch {
@@ -114,20 +114,20 @@ class SettingsViewModel @Inject constructor(
             try {
                 connectionGateway.connect(s.settings)
                 connectionGateway.disconnect()
-                _effects.send(SettingsEffect.ShowMessage("连接成功"))
+                _effects.send(SettingsEffect.ShowMessage(R.string.settings_test_success))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _effects.send(SettingsEffect.ShowMessage(e.message ?: "连接失败"))
+                _effects.send(SettingsEffect.ShowRawMessage(e.message ?: ""))
             } finally {
                 isTestingConnection = false
             }
         }
     }
 
-    private fun validate(s: SettingsUiState): String? {
+    private fun validate(s: SettingsUiState): Int? {
         if (!s.settings.isComplete()) {
-            return "请填写完整的连接信息(服务器/端口/账号/密码/Topic)"
+            return R.string.err_settings_incomplete
         }
         return null
     }

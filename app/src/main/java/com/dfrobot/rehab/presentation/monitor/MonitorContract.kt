@@ -5,10 +5,10 @@ import com.dfrobot.rehab.domain.SessionStats
 import com.dfrobot.rehab.domain.model.ConnectionState
 import com.dfrobot.rehab.domain.model.TrainingRatio
 
-/** 事件时间线条目。 */
+/** 事件时间线条目:文案以资源 ID 承载,由 UI 层渲染(支持本地化)。 */
 data class EventUi(
     val timeMillis: Long,
-    val text: String,
+    val textRes: Int,
 )
 
 data class MonitorUiState(
@@ -40,5 +40,9 @@ sealed interface MonitorIntent {
 }
 
 sealed interface MonitorEffect {
-    data class ShowMessage(val message: String) : MonitorEffect
+    /** 静态文案(资源 ID)。 */
+    data class ShowMessage(val messageRes: Int) : MonitorEffect
+
+    /** 运行时动态文案(如连接错误详情)。 */
+    data class ShowRawMessage(val message: String) : MonitorEffect
 }

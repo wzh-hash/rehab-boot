@@ -1,5 +1,6 @@
 package com.dfrobot.rehab.presentation.history
 
+import com.dfrobot.rehab.R
 import com.dfrobot.rehab.domain.model.TrainingRatio
 import com.dfrobot.rehab.domain.model.TrainingSession
 import com.dfrobot.rehab.domain.repository.TrainingSessionRepository
@@ -71,7 +72,7 @@ class HistoryViewModelTest {
         assertEquals(listOf(5L), repo.deleted)
         assertEquals(emptyList<TrainingSession>(), viewModel.state.value.sessions)
         viewModel.effects.test {
-            assertEquals(HistoryEffect.ShowMessage("已删除"), awaitItem())
+            assertEquals(HistoryEffect.ShowMessage(R.string.deleted), awaitItem())
         }
     }
 }

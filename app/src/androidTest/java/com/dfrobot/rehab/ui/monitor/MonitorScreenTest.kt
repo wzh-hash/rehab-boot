@@ -71,7 +71,8 @@ class MonitorScreenTest {
         )
         composeRule.onNodeWithText("25%").assertIsNotEnabled()
         composeRule.onNodeWithText("设备训练中…").assertIsDisplayed()
-        composeRule.onNodeWithText("第 1/3 次").assertIsDisplayed()
+        composeRule.onNodeWithText("第 1").assertIsDisplayed()
+        composeRule.onNodeWithText("/3 次").assertIsDisplayed()
     }
 
     @Test

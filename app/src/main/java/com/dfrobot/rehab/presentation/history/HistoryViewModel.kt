@@ -2,6 +2,7 @@ package com.dfrobot.rehab.presentation.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dfrobot.rehab.R
 import com.dfrobot.rehab.domain.repository.TrainingSessionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -40,7 +41,7 @@ class HistoryViewModel @Inject constructor(
         when (intent) {
             is HistoryIntent.DeleteSession -> viewModelScope.launch {
                 repository.deleteSession(intent.id)
-                _effects.send(HistoryEffect.ShowMessage("已删除"))
+                _effects.send(HistoryEffect.ShowMessage(R.string.deleted))
             }
         }
     }

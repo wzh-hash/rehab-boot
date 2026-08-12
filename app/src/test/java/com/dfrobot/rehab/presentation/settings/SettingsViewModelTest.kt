@@ -1,5 +1,6 @@
 package com.dfrobot.rehab.presentation.settings
 
+import com.dfrobot.rehab.R
 import com.dfrobot.rehab.domain.ConnectionGateway
 import com.dfrobot.rehab.domain.model.ConnectionState
 import com.dfrobot.rehab.domain.model.DeviceSettings
@@ -87,7 +88,7 @@ class SettingsViewModelTest {
         fillValidForm()
         viewModel.accept(SettingsIntent.ConnectionFieldChanged(ConnectionField.IOT_ID, ""))
         viewModel.accept(SettingsIntent.Save)
-        assertNotNull(viewModel.state.value.validationError)
+        assertNotNull(viewModel.state.value.validationErrorRes)
         assertEquals(0, settingsRepo.savedCount)
     }
 
@@ -96,18 +97,18 @@ class SettingsViewModelTest {
         fillValidForm()
         viewModel.accept(SettingsIntent.ConnectionFieldChanged(ConnectionField.TOPIC, ""))
         viewModel.accept(SettingsIntent.Save)
-        assertNotNull(viewModel.state.value.validationError)
+        assertNotNull(viewModel.state.value.validationErrorRes)
     }
 
     @Test
     fun `合法表单保存成功并提示`() = runTest {
         fillValidForm()
         viewModel.accept(SettingsIntent.Save)
-        assertNull(viewModel.state.value.validationError)
+        assertNull(viewModel.state.value.validationErrorRes)
         assertEquals(1, settingsRepo.savedCount)
         assertEquals("wIOqDXyDg", settingsRepo.settingsFlow.value.topic)
         viewModel.effects.test {
-            assertEquals(SettingsEffect.ShowMessage("已保存"), awaitItem())
+            assertEquals(SettingsEffect.ShowMessage(R.string.settings_saved), awaitItem())
         }
     }
 
@@ -118,7 +119,7 @@ class SettingsViewModelTest {
         assertEquals(1, gateway.connectCallCount)
         assertEquals(ConnectionState.Disconnected, gateway.connectionState.value)
         viewModel.effects.test {
-            assertEquals(SettingsEffect.ShowMessage("连接成功"), awaitItem())
+            assertEquals(SettingsEffect.ShowMessage(R.string.settings_test_success), awaitItem())
         }
     }
 
@@ -129,7 +130,7 @@ class SettingsViewModelTest {
             com.dfrobot.rehab.core.mqtt.MqttConnectionException("网络不可达,请检查网络或服务器地址")
         viewModel.accept(SettingsIntent.TestConnection)
         viewModel.effects.test {
-            val effect = awaitItem() as SettingsEffect.ShowMessage
+            val effect = awaitItem() as SettingsEffect.ShowRawMessage
             assertTrue(effect.message.contains("网络不可达"))
         }
     }
@@ -138,6 +139,6 @@ class SettingsViewModelTest {
     fun `表单不完整时测试连接直接报校验错误`() = runTest {
         viewModel.accept(SettingsIntent.TestConnection)
         assertEquals(0, gateway.connectCallCount)
-        assertNotNull(viewModel.state.value.validationError)
+        assertNotNull(viewModel.state.value.validationErrorRes)
     }
 }

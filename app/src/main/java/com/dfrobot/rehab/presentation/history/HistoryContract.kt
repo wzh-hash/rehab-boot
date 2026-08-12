@@ -14,5 +14,5 @@ sealed interface HistoryIntent {
 }
 
 sealed interface HistoryEffect {
-    data class ShowMessage(val message: String) : HistoryEffect
+    data class ShowMessage(val messageRes: Int) : HistoryEffect
 }

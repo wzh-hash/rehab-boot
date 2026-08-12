@@ -103,7 +103,11 @@ fun MonitorRoute(
     LaunchedEffect(viewModel.effects) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is MonitorEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+                is MonitorEffect.ShowMessage ->
+                    snackbarHostState.showSnackbar(context.getString(effect.messageRes))
+
+                is MonitorEffect.ShowRawMessage ->
+                    snackbarHostState.showSnackbar(effect.message)
             }
         }
     }
@@ -433,13 +437,13 @@ private fun TrainingProgressCard(state: MonitorUiState) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            "第 ${animatedReps.toInt()}",
+                            stringResource(R.string.monitor_rep_prefix, animatedReps.toInt()),
                             style = MaterialTheme.typography.displayLarge,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "/3 次",
+                            stringResource(R.string.monitor_rep_suffix),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 8.dp),
@@ -505,7 +509,6 @@ private fun RepetitionDots(completed: Int, total: Int) {
 // ---- 事件时间线 ----
 @Composable
 private fun EventTimelineCard(events: List<EventUi>) {
-    val reachedText = stringResource(R.string.monitor_event_reached)
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -531,7 +534,7 @@ private fun EventTimelineCard(events: List<EventUi>) {
                 val latestIndex = events.lastIndex
                 events.forEachIndexed { index, event ->
                     val isLatest = index == latestIndex
-                    val reachedTarget = event.text == reachedText
+                    val reachedTarget = event.textRes == R.string.monitor_event_reached
                     if (isLatest) {
                         AnimatedVisibility(
                             visible = true,
@@ -580,7 +583,7 @@ private fun TimelineRow(event: EventUi, reachedTarget: Boolean) {
             )
         }
         Text(
-            event.text,
+            stringResource(event.textRes),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),

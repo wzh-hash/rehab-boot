@@ -1,5 +1,6 @@
 package com.dfrobot.rehab.presentation.monitor
 
+import com.dfrobot.rehab.R
 import com.dfrobot.rehab.data.mqtt.TelemetryDataSource
 import com.dfrobot.rehab.domain.ConnectionGateway
 import com.dfrobot.rehab.domain.SessionPhase
@@ -136,7 +137,7 @@ class MonitorViewModelTest {
         assertEquals(0, telemetry.publishedCommands.size)
         assertEquals(SessionPhase.Idle, viewModel.state.value.phase)
         viewModel.effects.test {
-            assertEquals(MonitorEffect.ShowMessage("未连接,请先连接平台"), awaitItem())
+            assertEquals(MonitorEffect.ShowMessage(R.string.err_not_connected_cmd), awaitItem())
         }
     }
 
@@ -166,7 +167,7 @@ class MonitorViewModelTest {
         val viewModel = createViewModel()
         gateway.stateFlow.value = ConnectionState.Connected
         telemetry.events.emit(DeviceEvent.RepReached)
-        assertTrue(viewModel.state.value.recentEvents.any { it.text == "已达到目标重量" })
+        assertTrue(viewModel.state.value.recentEvents.any { it.textRes == R.string.monitor_event_reached })
     }
 
     @Test
@@ -186,7 +187,7 @@ class MonitorViewModelTest {
         assertEquals(3, session.repsCompleted)
         assertEquals(true, session.completed)
         viewModel.effects.test {
-            assertEquals(MonitorEffect.ShowMessage("训练完成,已记录"), awaitItem())
+            assertEquals(MonitorEffect.ShowMessage(R.string.session_done), awaitItem())
         }
     }
 
@@ -248,7 +249,7 @@ class MonitorViewModelTest {
         assertEquals(false, sessionRepo.saved[0].completed)
         assertEquals(0, sessionRepo.saved[0].repsCompleted)
         viewModel.effects.test {
-            assertEquals(MonitorEffect.ShowMessage("训练超时,已记录(未完成)"), awaitItem())
+            assertEquals(MonitorEffect.ShowMessage(R.string.session_timeout), awaitItem())
         }
     }
 
@@ -260,7 +261,7 @@ class MonitorViewModelTest {
         viewModel.accept(MonitorIntent.RetryConnect)
         assertEquals(0, gateway.connectCallCount)
         viewModel.effects.test {
-            assertEquals(MonitorEffect.ShowMessage("请先在「设置」页填写平台连接信息"), awaitItem())
+            assertEquals(MonitorEffect.ShowMessage(R.string.settings_needed_hint), awaitItem())
         }
     }
 }

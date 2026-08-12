@@ -6,7 +6,8 @@ data class SettingsUiState(
     val settings: DeviceSettings = DeviceSettings(),
     val connectionEnabled: Boolean = false,
     val isSaving: Boolean = false,
-    val validationError: String? = null,
+    /** 表单校验错误(资源 ID)。 */
+    val validationErrorRes: Int? = null,
 )
 
 sealed interface SettingsIntent {
@@ -19,5 +20,9 @@ sealed interface SettingsIntent {
 enum class ConnectionField { HOST, PORT, IOT_ID, IOT_PWD, TOPIC }
 
 sealed interface SettingsEffect {
-    data class ShowMessage(val message: String) : SettingsEffect
+    /** 静态文案(资源 ID)。 */
+    data class ShowMessage(val messageRes: Int) : SettingsEffect
+
+    /** 运行时动态文案(如连接错误详情)。 */
+    data class ShowRawMessage(val message: String) : SettingsEffect
 }

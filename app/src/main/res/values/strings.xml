@@ -32,7 +32,8 @@
     <string name="monitor_hello_test">语音测试</string>
     <!-- 训练进度卡 -->
     <string name="monitor_progress_title">训练进度</string>
-    <string name="monitor_rep_progress">第 %1$d/3 次</string>
+    <string name="monitor_rep_prefix">第 %1$d</string>
+    <string name="monitor_rep_suffix">/3 次</string>
     <string name="monitor_session_stats">时长 %1$s · 目标 %2$d%%</string>
     <string name="monitor_steps_label">步数 %1$d</string>
     <string name="monitor_steps_unsupported">设备不支持计步</string>
@@ -50,6 +51,7 @@
     <string name="err_training_busy">设备训练中,请等待当前训练结束</string>
     <string name="err_send_failed">指令发送失败</string>
     <string name="err_connection_failed">连接失败</string>
+    <string name="err_save_failed">保存失败</string>
     <string name="settings_needed_hint">请先在「设置」页填写平台连接信息</string>
 
     <!-- 历史页(提案 §4 卡片化 + 步数) -->

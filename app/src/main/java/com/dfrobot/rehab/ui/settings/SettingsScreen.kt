@@ -65,7 +65,11 @@ fun SettingsRoute(
     LaunchedEffect(viewModel.effects) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is SettingsEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+                is SettingsEffect.ShowMessage ->
+                    snackbarHostState.showSnackbar(context.getString(effect.messageRes))
+
+                is SettingsEffect.ShowRawMessage ->
+                    snackbarHostState.showSnackbar(effect.message)
             }
         }
     }
@@ -109,9 +113,9 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            state.validationError?.let { error ->
+            state.validationErrorRes?.let { errorRes ->
                 Text(
-                    error,
+                    stringResource(errorRes),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
