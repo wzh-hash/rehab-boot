@@ -37,11 +37,26 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+        }
+    }
+
+    // 沙箱 /tmp 为 noexec:原生库提取需要可执行目录
+    // forkEvery=1:每测试类独立 JVM,规避 Moquette 同 JVM 二次启动挂起
+    tasks.withType<Test>().configureEach {
+        systemProperty("java.io.tmpdir", "/opt/tmp-exec")
+        forkEvery = 1
+    }
+
+    packaging {
+        resources {
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
         }
     }
 }
@@ -64,6 +79,8 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    // Room KSP 处理器校验需要 sqlite 原生库(显式加入,确保在 KSP classpath 上)
+    ksp("org.xerial:sqlite-jdbc:3.41.2.2")
     implementation(libs.datastore.preferences)
     implementation(libs.hivemq.mqtt.client)
     implementation(libs.kotlinx.serialization.json)
@@ -74,6 +91,7 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.room.testing)
+    testImplementation(libs.moquette.broker)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.compose.ui.test.manifest)
